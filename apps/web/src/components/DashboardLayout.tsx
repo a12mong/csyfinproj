@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 const navItems = [
   { href: "/", label: "Dashboard", exact: true },
   { href: "/inventory", label: "Inventory", exact: false },
+  { href: "/receiving", label: "Receiving", exact: false },
   { href: "/sales", label: "Sales", exact: false },
   { href: "/customers", label: "Customers", exact: false },
   { href: "/finance", label: "Finance", exact: false },
