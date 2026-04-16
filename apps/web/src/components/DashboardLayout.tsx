@@ -4,31 +4,42 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import ProtectedRoute from "./ProtectedRoute";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, PermissionPage } from "@/contexts/AuthContext";
 
-const navItems = [
-  { href: "/", label: "Dashboard", exact: true },
-  { href: "/inventory", label: "Inventory", exact: false },
-  { href: "/receiving", label: "Receiving", exact: false },
-  { href: "/sales", label: "Sales", exact: false },
-  { href: "/customers", label: "Customers", exact: false },
-  { href: "/finance", label: "Finance", exact: false },
-  { href: "/payments", label: "Payments", exact: false },
+interface NavItem {
+  href: string;
+  label: string;
+  exact: boolean;
+  page: PermissionPage;
+}
+
+const navItems: NavItem[] = [
+  { href: "/", label: "Dashboard", exact: true, page: "dashboard" },
+  { href: "/inventory", label: "Inventory", exact: false, page: "inventory" },
+  { href: "/receiving", label: "Receiving", exact: false, page: "receiving" },
+  { href: "/sales", label: "Sales", exact: false, page: "sales" },
+  { href: "/customers", label: "Customers", exact: false, page: "customers" },
+  { href: "/finance", label: "Finance", exact: false, page: "finance" },
+  { href: "/payments", label: "Payments", exact: false, page: "payments" },
 ];
 
-const adminNavItems = [
-  { href: "/settings", label: "Settings", exact: false },
+const adminNavItems: NavItem[] = [
+  { href: "/settings", label: "Settings", exact: false, page: "settings" },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
 
   function handleLogout() {
     logout();
     router.push("/login");
   }
+
+  const visibleNavItems = navItems.filter((item) => hasPermission(item.page, "canView"));
+  const visibleAdminItems = adminNavItems.filter((item) => hasPermission(item.page, "canView"));
+  const showAdminSection = visibleAdminItems.length > 0;
 
   return (
     <ProtectedRoute>
@@ -50,7 +61,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
           {/* Navigation */}
           <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const isActive = item.exact
                 ? pathname === item.href
                 : pathname === item.href || pathname.startsWith(item.href + "/");
@@ -68,17 +79,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 </Link>
               );
             })}
-            {user?.role === "admin" && (
+            {showAdminSection && (
               <>
                 <div className="pt-3 pb-1">
                   <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
                     Admin
                   </p>
                 </div>
-                {adminNavItems.map((item) => {
+                {visibleAdminItems.map((item) => {
                   const isActive =
-                    pathname === item.href ||
-                    pathname.startsWith(item.href + "/");
+                    pathname === item.href || pathname.startsWith(item.href + "/");
                   return (
                     <Link
                       key={item.href}
