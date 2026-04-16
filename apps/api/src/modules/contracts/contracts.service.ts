@@ -59,19 +59,48 @@ function computeEmiTotals(
 }
 
 export async function createContract(input: CreateContractInput, userId: string) {
+  // Resolve linked sales upfront (needed for auto-sum and party auto-creation)
+  const linkedSales =
+    input.sale_ids && input.sale_ids.length > 0
+      ? await prisma.sale.findMany({
+          where: { id: { in: input.sale_ids } },
+          include: {
+            customer: true,
+            financialInstitution: true,
+          },
+        })
+      : [];
+
+  // Auto-sum totalPrincipal from linked sales' financeAmount when not explicitly provided
+  const resolvedPrincipal =
+    input.total_principal ??
+    linkedSales.reduce((sum, s) => sum + Number(s.financeAmount), 0);
+
+  if (resolvedPrincipal <= 0) {
+    throw Object.assign(
+      new Error("total_principal must be positive (computed from linked sales financeAmount)"),
+      { statusCode: 400 }
+    );
+  }
+
   const { totalInterest, totalAmount } = computeEmiTotals(
-    input.total_principal,
+    resolvedPrincipal,
     input.interest_rate,
     input.num_installments
   );
 
   const contractNumber = await generateContractNumber();
 
+  // For finance_company sales, derive the financial institution from linked sales
+  const financeCompanySale = linkedSales.find(
+    (s) => s.paymentMethod === "finance_company" && s.financialInstitutionId
+  );
+
   const contract = await prisma.contract.create({
     data: {
       contractNumber,
       customerId: input.customer_id,
-      totalPrincipal: input.total_principal,
+      totalPrincipal: resolvedPrincipal,
       totalInterest,
       totalAmount,
       numInstallments: input.num_installments,
@@ -80,25 +109,70 @@ export async function createContract(input: CreateContractInput, userId: string)
       status: "active",
       notes: input.notes ?? null,
       createdByUserId: userId,
+      ...(financeCompanySale?.financialInstitutionId && {
+        financialInstitutionId: financeCompanySale.financialInstitutionId,
+      }),
     },
   });
 
   // Link sales to this contract
-  if (input.sale_ids && input.sale_ids.length > 0) {
+  if (linkedSales.length > 0) {
     await Promise.all(
-      input.sale_ids.map((saleId) =>
+      linkedSales.map((sale) =>
         prisma.contractSale.create({
-          data: { contractId: contract.id, saleId },
+          data: { contractId: contract.id, saleId: sale.id },
         })
       )
     );
   }
 
-  // Always generate installment schedule (auto-generated on contract creation per TDS-55)
+  // Auto-create ContractParty records for finance_company sales (3-party transaction)
+  if (financeCompanySale) {
+    const parties: Array<{
+      contractId: string;
+      role: "owner" | "buyer" | "seller";
+      partyName: string;
+      partyRefId?: string;
+      partyRefType?: string;
+    }> = [
+      // Owner: the financial institution that holds title
+      {
+        contractId: contract.id,
+        role: "owner",
+        partyName:
+          financeCompanySale.financialInstitution?.name ??
+          financeCompanySale.financeCompanyName ??
+          "Financial Institution",
+        ...(financeCompanySale.financialInstitutionId && {
+          partyRefId: financeCompanySale.financialInstitutionId,
+          partyRefType: "financial_institution",
+        }),
+      },
+      // Buyer: the customer who will repay the institution
+      {
+        contractId: contract.id,
+        role: "buyer",
+        partyName: financeCompanySale.customer.name,
+        partyRefId: financeCompanySale.customerId,
+        partyRefType: "customer",
+      },
+      // Seller: our shop (the system)
+      {
+        contractId: contract.id,
+        role: "seller",
+        partyName: "ร้านค้า (CSY)",
+        partyRefType: "system",
+      },
+    ];
+
+    await Promise.all(parties.map((p) => prisma.contractParty.create({ data: p })));
+  }
+
+  // Generate installment schedule on contract creation
   let installments: object[] = [];
   if (input.generate_installments) {
     installments = await generateInstallmentSchedule(contract.id, {
-      principal: input.total_principal,
+      principal: resolvedPrincipal,
       annualRate: input.interest_rate,
       numInstallments: input.num_installments,
       startDate: new Date(input.start_date),
@@ -111,6 +185,7 @@ export async function createContract(input: CreateContractInput, userId: string)
       customer: true,
       createdBy: { select: { id: true, name: true } },
       contractSales: { include: { sale: true } },
+      contractParties: true,
     },
   });
 
@@ -260,6 +335,7 @@ export async function getContractDetail(id: string) {
         orderBy: { paymentDate: "desc" },
         include: { verifiedBy: { select: { id: true, name: true } } },
       },
+      contractParties: { orderBy: { role: "asc" } },
     },
   });
 
@@ -310,7 +386,8 @@ export async function generateContractInstallments(id: string) {
   }
 
   const installments = await generateInstallmentSchedule(contract.id, {
-    totalAmount: Number(contract.totalAmount),
+    principal: Number(contract.totalPrincipal),
+    annualRate: Number(contract.interestRate),
     numInstallments: contract.numInstallments,
     startDate: contract.startDate,
   });

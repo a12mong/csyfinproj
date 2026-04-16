@@ -44,11 +44,12 @@ export interface Sale {
   totalPrice: number;
   downPayment: number;
   financeAmount: number;
-  numInstallments: number;
-  interestRate: number;
+  numInstallments?: number;
+  interestRate?: number;
   paymentMethod: "cash" | "installment" | "finance_company";
   financeCompanyName?: string;
   financeReferenceNumber?: string;
+  financialInstitutionId?: string | null;
   status: "active" | "completed" | "defaulted" | "cancelled";
   notes?: string;
 }
@@ -148,6 +149,7 @@ export interface Contract {
   numInstallments: number;
   interestRate: number;
   startDate: string;
+  financialInstitutionId?: string | null;
   status: "active" | "completed" | "defaulted" | "cancelled";
   notes?: string | null;
   createdByUserId: string;
@@ -161,6 +163,9 @@ export interface ContractInstallment {
   installmentNumber: number;
   dueDate: string;
   amountDue: number;
+  principalPortion?: number | null;
+  interestPortion?: number | null;
+  remainingBalance?: number | null;
   amountPaid: number;
   status: "pending" | "paid" | "overdue" | "partially_paid";
 }
@@ -175,6 +180,17 @@ export interface ContractPayment {
   slipImageUrl?: string | null;
   verified: boolean;
   verifiedBy?: { id: string; name: string } | null;
+}
+
+export interface ContractParty {
+  id: string;
+  contractId: string;
+  role: "owner" | "buyer" | "seller";
+  partyName: string;
+  partyRefId?: string | null;
+  partyRefType?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ContractSaleLink {
@@ -195,4 +211,5 @@ export interface ContractDetail extends Contract {
   contractSales: ContractSaleLink[];
   installments: ContractInstallment[];
   payments: ContractPayment[];
+  contractParties: ContractParty[];
 }

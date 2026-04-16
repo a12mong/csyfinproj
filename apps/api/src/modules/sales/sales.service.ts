@@ -4,7 +4,8 @@ import type { CreateSaleInput, UpdateSaleInput } from "./sales.schemas.js";
 export async function createSale(input: CreateSaleInput, userId: string) {
   const financeAmount = input.total_price - input.down_payment;
 
-  // Create the sale
+  // Create the sale — installment details (count, interest) are specified later
+  // when linking this sale to a contract
   const sale = await prisma.sale.create({
     data: {
       customerId: input.customer_id,
@@ -13,44 +14,17 @@ export async function createSale(input: CreateSaleInput, userId: string) {
       totalPrice: input.total_price,
       downPayment: input.down_payment,
       financeAmount,
-      numInstallments: input.num_installments,
-      interestRate: input.interest_rate,
+      numInstallments: 0,
+      interestRate: 0,
       paymentMethod: input.payment_method,
       financeCompanyName: input.finance_company_name ?? null,
       financeReferenceNumber: input.finance_reference_number ?? null,
+      financialInstitutionId: input.financial_institution_id ?? null,
       soldByUserId: userId,
       notes: input.notes,
-      status: "active",
+      status: input.payment_method === "cash" ? "completed" : "active",
     },
   });
-
-  // Generate installment schedule only for dealer-managed installment payments
-  // finance_company payment: finance company handles installments, not the dealer
-  const installments = [];
-  if (input.payment_method === "installment" && input.num_installments > 0) {
-    // Total interest = financeAmount * (interestRate / 100) * (numInstallments / 12)
-    const totalInterest =
-      financeAmount * (input.interest_rate / 100) * (input.num_installments / 12);
-    const totalRepayable = financeAmount + totalInterest;
-    const monthlyAmount = Math.round((totalRepayable / input.num_installments) * 100) / 100;
-
-    for (let i = 1; i <= input.num_installments; i++) {
-      const dueDate = new Date();
-      dueDate.setMonth(dueDate.getMonth() + i);
-
-      const installment = await prisma.installment.create({
-        data: {
-          saleId: sale.id,
-          installmentNumber: i,
-          dueDate,
-          amountDue: monthlyAmount,
-          status: "pending",
-        },
-      });
-
-      installments.push(installment);
-    }
-  }
 
   // Attach add-ons if provided
   let saleAddons: { id: string; name: string; description: string | null; price: unknown; active: boolean; createdAt: Date }[] = [];
@@ -81,7 +55,7 @@ export async function createSale(input: CreateSaleInput, userId: string) {
   return {
     data: {
       ...sale,
-      installments,
+      installments: [],
       addons: saleAddons,
     },
   };
