@@ -170,7 +170,7 @@ export default function DashboardPage() {
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <a
-                  href="/inventory/new"
+                  href="/inventory"
                   className="flex items-center gap-3 bg-white rounded-lg border border-gray-200 px-5 py-4 hover:border-primary-400 hover:shadow-sm transition-all"
                 >
                   <span className="text-2xl">+</span>

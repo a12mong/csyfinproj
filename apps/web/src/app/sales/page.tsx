@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, FormEvent, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
 import FormModal from "@/components/FormModal";
 import { apiFetch } from "@/lib/api";
@@ -597,9 +597,10 @@ const INITIAL_PRICING: PricingForm = {
 interface NewSaleFormProps {
   onSuccess: (saleId: string) => void;
   onCancel: () => void;
+  prefilledCustomerId?: string;
 }
 
-function NewSaleForm({ onSuccess, onCancel }: NewSaleFormProps) {
+function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormProps) {
   const [step, setStep] = useState(1);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [motorcycle, setMotorcycle] = useState<Motorcycle | null>(null);
@@ -608,6 +609,18 @@ function NewSaleForm({ onSuccess, onCancel }: NewSaleFormProps) {
   const [pricingErrors, setPricingErrors] = useState<Partial<PricingForm>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Pre-fill customer when navigated from customer detail page
+  useEffect(() => {
+    if (prefilledCustomerId && !customer) {
+      apiFetch<{ data: Customer }>(`/customers/${prefilledCustomerId}`)
+        .then((res) => {
+          setCustomer(res.data);
+          setStep(2);
+        })
+        .catch(() => {});
+    }
+  }, [prefilledCustomerId, customer]);
 
   function toggleAddon(id: string) {
     setAddonIds((prev) =>
@@ -761,8 +774,12 @@ function NewSaleForm({ onSuccess, onCancel }: NewSaleFormProps) {
 
 // ─── Sales Page ───────────────────────────────────────────────────────────────
 
-export default function SalesPage() {
+function SalesPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const openNew = searchParams.get("open") === "new";
+  const prefilledCustomerId = searchParams.get("customer_id") ?? undefined;
+
   const [sales, setSales] = useState<Sale[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -770,6 +787,11 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+
+  // Auto-open modal when arriving via ?open=new
+  useEffect(() => {
+    if (openNew) setShowNewModal(true);
+  }, [openNew]);
 
   const fetchSales = useCallback(
     async (currentPage: number, status: string) => {
@@ -962,8 +984,17 @@ export default function SalesPage() {
         <NewSaleForm
           onSuccess={handleSaleSuccess}
           onCancel={() => setShowNewModal(false)}
+          prefilledCustomerId={prefilledCustomerId}
         />
       </FormModal>
     </DashboardLayout>
+  );
+}
+
+export default function SalesPage() {
+  return (
+    <Suspense>
+      <SalesPageInner />
+    </Suspense>
   );
 }

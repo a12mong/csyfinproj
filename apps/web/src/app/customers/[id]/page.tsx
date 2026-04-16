@@ -116,7 +116,7 @@ export default function CustomerDetailPage() {
             <p className="text-sm text-gray-500 mt-1">{customer.phone}</p>
           </div>
           <Link
-            href={`/sales/new?customer_id=${customer.id}`}
+            href={`/sales?open=new&customer_id=${customer.id}`}
             className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
           >
             + New Sale
@@ -175,7 +175,7 @@ export default function CustomerDetailPage() {
             <div className="bg-white rounded-xl border border-gray-200 px-5 py-10 text-center text-sm text-gray-400">
               No sales yet.{" "}
               <Link
-                href={`/sales/new?customer_id=${customer.id}`}
+                href={`/sales?open=new&customer_id=${customer.id}`}
                 className="text-primary-600 hover:underline"
               >
                 Create one?
