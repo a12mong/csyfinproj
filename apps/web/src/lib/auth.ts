@@ -1,4 +1,7 @@
+import type { User } from "@csyfinproj/shared";
+
 const TOKEN_KEY = "token";
+const USER_KEY = "user";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -15,4 +18,22 @@ export function removeToken(): void {
 
 export function isAuthenticated(): boolean {
   return getToken() !== null;
+}
+
+export function getUser(): User | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const s = localStorage.getItem(USER_KEY);
+    return s ? (JSON.parse(s) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setUser(user: User): void {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function removeUser(): void {
+  localStorage.removeItem(USER_KEY);
 }

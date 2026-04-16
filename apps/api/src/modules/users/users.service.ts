@@ -178,6 +178,24 @@ export async function deactivateUser(id: string, requesterId: string) {
   return { data: toUserDto(updated) };
 }
 
+export async function reactivateUser(id: string) {
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) {
+    throw Object.assign(new Error("User not found"), { statusCode: 404 });
+  }
+
+  if (user.active) {
+    throw Object.assign(new Error("User is already active"), { statusCode: 422 });
+  }
+
+  const updated = await prisma.user.update({
+    where: { id },
+    data: { active: true },
+  });
+
+  return { data: toUserDto(updated) };
+}
+
 export async function resetPassword(id: string, input: ResetPasswordInput) {
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user) {

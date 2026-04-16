@@ -11,6 +11,7 @@ import {
   createUser,
   updateUser,
   deactivateUser,
+  reactivateUser,
   resetPassword,
 } from "./users.service.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
@@ -93,6 +94,17 @@ usersRouter.delete("/:id", async (req, res) => {
       req.params["id"] as string,
       req.user!.sub
     );
+    res.json(result);
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
+  }
+});
+
+// PATCH /api/v1/users/:id/reactivate
+usersRouter.patch("/:id/reactivate", async (req, res) => {
+  try {
+    const result = await reactivateUser(req.params["id"] as string);
     res.json(result);
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };

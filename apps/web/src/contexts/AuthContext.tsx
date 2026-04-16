@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { User } from "@csyfinproj/shared";
-import { getToken, setToken, removeToken } from "@/lib/auth";
+import { getToken, setToken, removeToken, getUser, setUser, removeUser } from "@/lib/auth";
 
 interface AuthState {
   user: User | null;
@@ -26,9 +26,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const token = getToken();
+    const user = getUser();
     if (token) {
-      // Token exists — mark as authenticated. Full user fetch can be added later.
-      setState({ user: null, token, isLoading: false });
+      setState({ user, token, isLoading: false });
     } else {
       setState({ user: null, token: null, isLoading: false });
     }
@@ -36,11 +36,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function login(token: string, user: User) {
     setToken(token);
+    setUser(user);
     setState({ user, token, isLoading: false });
   }
 
   function logout() {
     removeToken();
+    removeUser();
     setState({ user: null, token: null, isLoading: false });
   }
 
