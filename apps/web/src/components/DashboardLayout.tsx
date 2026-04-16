@@ -19,6 +19,7 @@ const navItems: NavItem[] = [
   { href: "/receiving", label: "Receiving", exact: false, page: "receiving" },
   { href: "/sales", label: "Sales", exact: false, page: "sales" },
   { href: "/customers", label: "Customers", exact: false, page: "customers" },
+  { href: "/contracts", label: "Contracts", exact: false, page: "contracts" },
   { href: "/finance", label: "Finance", exact: false, page: "finance" },
   { href: "/payments", label: "Payments", exact: false, page: "payments" },
 ];

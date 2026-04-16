@@ -13,6 +13,7 @@ export type PermissionPage =
   | "receiving"
   | "sales"
   | "customers"
+  | "contracts"
   | "finance"
   | "payments"
   | "settings";

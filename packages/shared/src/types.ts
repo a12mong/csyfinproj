@@ -132,3 +132,64 @@ export interface PaginatedResponse<T> {
   total: number;
   page: number;
 }
+
+// ─── Contract types ───────────────────────────────────────────────────────────
+
+export interface Contract {
+  id: string;
+  contractNumber: string;
+  customerId: string;
+  totalPrincipal: number;
+  totalInterest: number;
+  totalAmount: number;
+  numInstallments: number;
+  interestRate: number;
+  startDate: string;
+  status: "active" | "completed" | "defaulted" | "cancelled";
+  notes?: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContractInstallment {
+  id: string;
+  contractId: string;
+  installmentNumber: number;
+  dueDate: string;
+  amountDue: number;
+  amountPaid: number;
+  status: "pending" | "paid" | "overdue" | "partially_paid";
+}
+
+export interface ContractPayment {
+  id: string;
+  contractId: string;
+  installmentId?: string | null;
+  amount: number;
+  paymentDate: string;
+  paymentChannel: "cash" | "bank_transfer" | "line";
+  slipImageUrl?: string | null;
+  verified: boolean;
+  verifiedBy?: { id: string; name: string } | null;
+}
+
+export interface ContractSaleLink {
+  id: string;
+  contractId: string;
+  saleId: string;
+  sale: Sale & { motorcycle: Motorcycle };
+}
+
+export interface ContractListItem extends Contract {
+  customer: Customer;
+  _count: { installments: number; payments: number };
+}
+
+export interface ContractDetail extends Contract {
+  customer: Customer;
+  createdBy: { id: string; name: string };
+  contractSales: ContractSaleLink[];
+  installments: ContractInstallment[];
+  payments: ContractPayment[];
+}
