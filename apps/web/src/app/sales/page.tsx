@@ -322,13 +322,10 @@ function StepPricing({
   const fetchBuyerCandidates = useCallback(async (q: string) => {
     setBuyerLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "50" });
+      const params = new URLSearchParams({ limit: "20", type: "personal,individual" });
       if (q) params.set("search", q);
       const res = await apiFetch<PaginatedResponse<Customer>>(`/customers?${params}`);
-      // Filter to personal/individual only — exclude finance companies
-      setBuyerCandidates(
-        res.data.filter((c) => c.type === "personal" || c.type === "individual" || !c.type)
-      );
+      setBuyerCandidates(res.data);
     } catch {
       setBuyerCandidates([]);
     } finally {
