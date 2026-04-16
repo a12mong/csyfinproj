@@ -111,4 +111,129 @@ setup_requirements:
     command: "npm test (from apps/api directory)"
     note: "API server must be running on localhost:4000 for integration tests"
 
+manual_qa_testing:
+  tds_57:
+    title: "QA: Test Sales Workflow - All 3 Payment Methods"
+    status: "🔄 Awaiting Backend & Frontend Implementation (TDS-55, TDS-56)"
+    blockers:
+      - "TDS-55: Backend APIs (in_progress)"
+      - "TDS-56: Frontend UI (in_progress)"
+
+    seed_data_status: "✅ Prepared"
+    seed_data_summary:
+      cash_sales: "4 sales with payment_method=cash (no installments)"
+      installment_sales: "4 sales with payment_method=installment (CSY-managed financing)"
+      finance_company_sales: "4 sales with payment_method=finance_company (external finance companies)"
+      total_test_data: "12 complete sales with contracts, installments, and sample payments"
+
+    test_workflow_1:
+      name: "Cash Payment Sales"
+      steps:
+        - "1. Navigate to Sales page"
+        - "2. Select a customer"
+        - "3. Select a motorcycle"
+        - "4. Choose payment method: CASH"
+        - "5. Enter price = down_payment (full amount)"
+        - "6. Verify: No installment fields appear"
+        - "7. Create sale"
+        - "8. Verify: Sale status = COMPLETED, Motorcycle status = SOLD"
+        - "9. Verify: No Contract created for cash sales"
+      expected_results:
+        - "Sale created with status COMPLETED"
+        - "Motorcycle marked as SOLD"
+        - "No installments or contract created"
+        - "Sale is immediately completed without installment schedule"
+
+    test_workflow_2:
+      name: "In-house Installment Sales (payment_method=installment)"
+      steps:
+        - "1. Navigate to Sales page"
+        - "2. Select a customer"
+        - "3. Select a motorcycle"
+        - "4. Choose payment method: INSTALLMENT"
+        - "5. Enter down payment (partial amount)"
+        - "6. Set number of installments (12, 18, 24, or 36 months)"
+        - "7. Set interest rate (1.5% - 2.5% annually)"
+        - "8. Create sale"
+        - "9. Navigate to Contracts page"
+        - "10. Create Contract from the sale"
+        - "11. Verify: Installment schedule generated with Declining Balance formula"
+        - "12. Verify: First installment interest > principal, last installment interest < principal"
+      expected_results:
+        - "Sale created with payment_method=INSTALLMENT"
+        - "Contract generated automatically or via UI"
+        - "Installment schedule shows declining balance amortization"
+        - "Total principal across all installments = finance_amount"
+        - "Remaining balance in last installment ≈ 0"
+
+    test_workflow_3:
+      name: "Finance Company Sales (payment_method=finance_company)"
+      steps:
+        - "1. Navigate to Sales page"
+        - "2. Select a customer"
+        - "3. Select a motorcycle"
+        - "4. Choose payment method: FINANCE COMPANY"
+        - "5. Select finance company (e.g. 'กรุงศรีออโต้', 'ธนชาติ')"
+        - "6. Enter finance company reference number (optional)"
+        - "7. Enter down payment"
+        - "8. Set number of installments and interest rate"
+        - "9. Create sale"
+        - "10. Navigate to Contracts page"
+        - "11. Create Contract from the sale"
+        - "12. Verify: Finance company name appears on sale and contract"
+      expected_results:
+        - "Sale created with finance_company_name populated"
+        - "Contract created with finance company details"
+        - "Installment schedule generated with provided terms"
+
+    test_workflow_4:
+      name: "Installment Payments & State Transitions"
+      steps:
+        - "1. Open Contract with multiple pending installments"
+        - "2. Pay first installment (full amount)"
+        - "3. Verify: Installment status changes to PAID"
+        - "4. Pay second installment (partial payment, 50%)"
+        - "5. Verify: Installment status = PARTIALLY_PAID"
+        - "6. Pay remaining amount of second installment"
+        - "7. Verify: Installment status = PAID"
+        - "8. Pay all remaining installments"
+        - "9. Verify: Contract status changes to COMPLETED"
+      expected_results:
+        - "Payment recording updates installment status correctly"
+        - "Partial payments tracked properly"
+        - "Contract auto-completes when all installments paid"
+        - "Payment history visible on contract detail page"
+
+    test_workflow_5:
+      name: "Edge Cases & Validations"
+      steps:
+        - "1. Try to create cash sale with installment fields - should be disabled/hidden"
+        - "2. Try to create contract for cash sale - should fail with error"
+        - "3. Create sale with very small down payment - verify calculations"
+        - "4. Create sale with very high interest rate - verify amortization"
+        - "5. Test decimal precision in amount calculations"
+        - "6. Verify contract number auto-generation format (CT-XXXXXX)"
+      expected_results:
+        - "Proper validation errors shown"
+        - "UI logic hides/disables fields based on payment method"
+        - "Decimal amounts stored and calculated correctly"
+        - "All edge cases handled gracefully"
+
+    test_data_availability:
+      database_table: "Seed data in local database"
+      seed_script: "apps/api/prisma/seed.ts"
+      execution: "Run 'npm run prisma:seed' to populate test database"
+      generated_data:
+        - "4 cash payment sales (ready for test workflow 1)"
+        - "4 in-house installment sales (ready for test workflow 2)"
+        - "4 finance company sales (ready for test workflow 3)"
+        - "20 customers, 50+ motorcycles, sample payments"
+
+    readiness_checklist:
+      - "✅ Seed data prepared with all 3 payment methods"
+      - "⏳ Backend APIs for sales/contracts/payments (TDS-55)"
+      - "⏳ Frontend Forms for sales/contracts (TDS-56)"
+      - "⏳ Run integration tests to verify APIs"
+      - "⏳ Start dev server and execute manual test workflows"
+
 reports: []
