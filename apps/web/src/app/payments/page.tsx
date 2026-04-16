@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
+import { confirm, toastSuccess, alertError } from "@/lib/swal";
 import type {
   Installment,
   Payment,
@@ -150,6 +151,7 @@ function PaymentsContent() {
         throw new Error(err.error || res.statusText);
       }
 
+      toastSuccess("Payment recorded successfully");
       setSubmitSuccess("Payment recorded successfully.");
       setAmount("");
       setNotes("");
@@ -160,26 +162,38 @@ function PaymentsContent() {
       fetchInstallments();
       fetchUnverified();
     } catch (err) {
-      setSubmitError(
-        err instanceof Error ? err.message : "Failed to record payment"
-      );
+      const msg = err instanceof Error ? err.message : "Failed to record payment";
+      alertError(msg);
+      setSubmitError(msg);
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleVerify(paymentId: string, verified: boolean) {
+    const action = verified ? "approve" : "reject";
+    const confirmed = await confirm({
+      title: verified ? "Approve Payment?" : "Reject Payment?",
+      text: verified
+        ? "This will mark the payment as verified."
+        : "This will reject the payment slip.",
+      confirmText: verified ? "Yes, approve" : "Yes, reject",
+      icon: verified ? "question" : "warning",
+    });
+    if (!confirmed) return;
+
     setVerifyingId(paymentId);
     try {
       await apiFetch(`/payments/${paymentId}/verify`, {
         method: "PATCH",
         body: JSON.stringify({ verified }),
       });
+      toastSuccess(verified ? "Payment approved" : "Payment rejected");
       fetchUnverified();
     } catch (err) {
-      setVerifyError(
-        err instanceof Error ? err.message : "Failed to verify payment"
-      );
+      const msg = err instanceof Error ? err.message : `Failed to ${action} payment`;
+      alertError(msg);
+      setVerifyError(msg);
     } finally {
       setVerifyingId(null);
     }
