@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { User } from "@csyfinproj/shared";
-import { getToken, setToken, removeToken, getUser, setUser, removeUser } from "@/lib/auth";
+import { getUser, setUser, removeUser } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 
 // ─── Permission types ──────────────────────────────────────────────────────────
@@ -31,13 +31,12 @@ export type PermissionsMap = Record<PermissionPage, PagePermission>;
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isLoading: boolean;
   permissions: PermissionsMap | null;
 }
 
 interface AuthContextValue extends AuthState {
-  login: (token: string, user: User) => void;
+  login: (user: User) => void;
   logout: () => void;
   hasPermission: (page: PermissionPage, action: keyof PagePermission) => boolean;
 }
@@ -71,38 +70,42 @@ async function loadPermissions(): Promise<PermissionsMap | null> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
-    token: null,
     isLoading: true,
     permissions: null,
   });
 
-  // Restore session from localStorage and fetch permissions
+  // Restore session: user object from localStorage, validate via cookie-based /me call
   useEffect(() => {
-    const token = getToken();
     const user = getUser();
-    if (token && user) {
+    if (user) {
       loadPermissions().then((permissions) => {
-        setState({ user, token, isLoading: false, permissions });
+        if (permissions !== null) {
+          setState({ user, isLoading: false, permissions });
+        } else {
+          // Cookie expired or invalid — clear stored user
+          removeUser();
+          setState({ user: null, isLoading: false, permissions: null });
+        }
       });
     } else {
-      setState({ user: null, token: null, isLoading: false, permissions: null });
+      setState({ user: null, isLoading: false, permissions: null });
     }
   }, []);
 
-  function login(token: string, user: User) {
-    setToken(token);
+  function login(user: User) {
     setUser(user);
     // Keep isLoading true while fetching permissions to avoid permission flash
-    setState({ user, token, isLoading: true, permissions: null });
+    setState({ user, isLoading: true, permissions: null });
     loadPermissions().then((permissions) => {
-      setState({ user, token, isLoading: false, permissions });
+      setState({ user, isLoading: false, permissions });
     });
   }
 
   function logout() {
-    removeToken();
+    // Clear the HttpOnly cookie server-side
+    apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
     removeUser();
-    setState({ user: null, token: null, isLoading: false, permissions: null });
+    setState({ user: null, isLoading: false, permissions: null });
   }
 
   function hasPermission(page: PermissionPage, action: keyof PagePermission): boolean {

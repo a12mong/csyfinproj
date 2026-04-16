@@ -7,7 +7,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { User } from "@csyfinproj/shared";
 
 interface LoginResponse {
-  token: string;
   user: User;
 }
 
@@ -30,7 +29,7 @@ export default function LoginPage() {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      login(data.token, data.user);
+      login(data.user);
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

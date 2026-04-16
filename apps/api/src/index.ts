@@ -1,5 +1,7 @@
 import express, { type Application } from "express";
 import cors from "cors";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import { resolve } from "path";
 import { authRouter } from "./modules/auth/auth.router.js";
 import { motorcyclesRouter } from "./modules/inventory/motorcycles.router.js";
@@ -18,7 +20,22 @@ import { contractsRouter } from "./modules/contracts/contracts.router.js";
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
+app.use(helmet());
+
+const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:3000").split(",");
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. curl, server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+}));
+
+app.use(cookieParser());
 
 // Mount LINE webhook BEFORE express.json() so raw body is available for signature validation
 app.use("/api/v1/webhooks/line", lineWebhookRouter);

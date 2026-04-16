@@ -10,7 +10,14 @@ export interface UserDto {
   role: "admin" | "staff" | "viewer";
 }
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "change-me";
+const JWT_SECRET = (() => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.length < 32) {
+    console.error("FATAL: JWT_SECRET environment variable must be set and at least 32 characters long. Exiting.");
+    process.exit(1);
+  }
+  return secret;
+})();
 const JWT_EXPIRES_IN = "8h";
 
 function toUserDto(user: {

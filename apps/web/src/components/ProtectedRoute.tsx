@@ -9,14 +9,14 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { token, isLoading } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !token) {
+    if (!isLoading && !user) {
       router.replace("/login");
     }
-  }, [token, isLoading, router]);
+  }, [user, isLoading, router]);
 
   if (isLoading) {
     return (
@@ -26,7 +26,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  if (!token) {
+  if (!user) {
     // Will redirect via useEffect; render nothing to avoid flash
     return null;
   }

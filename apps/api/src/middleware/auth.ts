@@ -16,16 +16,26 @@ declare global {
   }
 }
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "change-me";
+const JWT_SECRET = (() => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.length < 32) {
+    console.error("FATAL: JWT_SECRET environment variable must be set and at least 32 characters long. Exiting.");
+    process.exit(1);
+  }
+  return secret;
+})();
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
+  // Accept token from Authorization header (API clients) or HttpOnly cookie (web app)
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : (req.cookies as Record<string, string | undefined>)?.token;
+
+  if (!token) {
     res.status(401).json({ error: "Missing or invalid authorization header" });
     return;
   }
-
-  const token = authHeader.slice(7);
   let payload: AuthPayload;
   try {
     payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
