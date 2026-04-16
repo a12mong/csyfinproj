@@ -16,6 +16,7 @@ import { lineWebhookRouter } from "./modules/webhooks/line-webhook.router.js";
 import { usersRouter } from "./modules/users/users.router.js";
 import { permissionsRouter } from "./modules/permissions/permissions.router.js";
 import { contractsRouter } from "./modules/contracts/contracts.router.js";
+import { financialInstitutionsRouter } from "./modules/financial-institutions/financial-institutions.router.js";
 
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
@@ -64,6 +65,7 @@ app.use("/api/v1/delivery-notes", deliveryNotesRouter);
 app.use("/api/v1/users", usersRouter);
 app.use("/api/v1", permissionsRouter);
 app.use("/api/v1/contracts", contractsRouter);
+app.use("/api/v1/financial-institutions", financialInstitutionsRouter);
 
 app.listen(PORT, () => {
   console.log(`API server running on http://localhost:${PORT}`);

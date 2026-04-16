@@ -14,6 +14,7 @@ import type {
   Sale,
   SaleWithInstallments,
   PaginatedResponse,
+  FinancialInstitution,
 } from "@csyfinproj/shared";
 
 const STATUS_OPTIONS = [
@@ -248,14 +249,22 @@ function StepMotorcycle({
 
 // ─── Step 3 — Pricing ─────────────────────────────────────────────────────────
 
+type PaymentMethod = "cash" | "installment" | "finance_company";
+
 interface PricingForm {
-  payment_method: "cash" | "installment";
+  payment_method: PaymentMethod;
   total_price: string;
   down_payment: string;
-  num_installments: string;
-  interest_rate: string;
+  financial_institution_id: string;
+  finance_reference_number: string;
   notes: string;
 }
+
+const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: "Cash",
+  installment: "Installment",
+  finance_company: "Finance Company",
+};
 
 function StepPricing({
   motorcycle,
@@ -268,42 +277,56 @@ function StepPricing({
   onChange: (f: PricingForm) => void;
   errors: Partial<PricingForm>;
 }) {
+  const [financialInstitutions, setFinancialInstitutions] = useState<FinancialInstitution[]>([]);
+
   const set = (field: keyof PricingForm, value: string) =>
     onChange({ ...form, [field]: value });
 
-  const isInstallment = form.payment_method === "installment";
+  const isCash = form.payment_method === "cash";
+  const isFinanceCompany = form.payment_method === "finance_company";
   const totalPrice = parseFloat(form.total_price) || 0;
   const downPayment = parseFloat(form.down_payment) || 0;
   const financeAmount = Math.max(0, totalPrice - downPayment);
-  const numInstallments = parseInt(form.num_installments) || 0;
-  const interestRate = parseFloat(form.interest_rate) || 0;
-  const totalInterest = (financeAmount * interestRate * numInstallments) / 1200;
-  const monthlyPayment =
-    isInstallment && numInstallments > 0
-      ? (financeAmount + totalInterest) / numInstallments
-      : 0;
+
+  // Fetch financial institutions when finance_company is selected
+  useEffect(() => {
+    if (!isFinanceCompany) return;
+    apiFetch<{ data: FinancialInstitution[] }>("/financial-institutions?active=true")
+      .then((res) => setFinancialInstitutions(res.data))
+      .catch(() => setFinancialInstitutions([]));
+  }, [isFinanceCompany]);
 
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-gray-900">Configure Pricing</h3>
 
+      {/* Cash auto-complete notice */}
+      {isCash && (
+        <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2.5">
+          <span className="text-green-600 text-sm">✓</span>
+          <p className="text-sm text-green-700">
+            Cash sales are marked as <strong>completed</strong> immediately upon creation.
+          </p>
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
           Payment Method
         </label>
-        <div className="flex gap-2">
-          {(["cash", "installment"] as const).map((method) => (
+        <div className="flex gap-2 flex-wrap">
+          {(["cash", "installment", "finance_company"] as PaymentMethod[]).map((method) => (
             <button
               key={method}
               type="button"
               onClick={() => set("payment_method", method)}
-              className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors capitalize ${
+              className={`flex-1 min-w-[100px] py-2 rounded-lg border text-sm font-medium transition-colors ${
                 form.payment_method === method
                   ? "border-primary-500 bg-primary-50 text-primary-700"
                   : "border-gray-200 text-gray-600 hover:border-gray-300"
               }`}
             >
-              {method}
+              {PAYMENT_METHOD_LABELS[method]}
             </button>
           ))}
         </div>
@@ -328,7 +351,7 @@ function StepPricing({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Down Payment (THB) <span className="text-red-500">*</span>
+            Down Payment (THB)
           </label>
           <input
             type="number"
@@ -344,60 +367,76 @@ function StepPricing({
         </div>
       </div>
 
-      {isInstallment && (
+      {/* Finance company fields */}
+      {isFinanceCompany && (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                # Installments <span className="text-red-500">*</span>
-              </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Financial Institution <span className="text-red-500">*</span>
+            </label>
+            {financialInstitutions.length > 0 ? (
+              <select
+                value={form.financial_institution_id}
+                onChange={(e) => set("financial_institution_id", e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+              >
+                <option value="">Select financial institution…</option>
+                {financialInstitutions.map((fi) => (
+                  <option key={fi.id} value={fi.id}>
+                    {fi.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
               <input
-                type="number"
-                min={1}
-                max={120}
-                value={form.num_installments}
-                onChange={(e) => set("num_installments", e.target.value)}
-                placeholder="12"
+                type="text"
+                value={form.financial_institution_id}
+                onChange={(e) => set("financial_institution_id", e.target.value)}
+                placeholder="Financial institution name"
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
-              {errors.num_installments && (
-                <p className="mt-1 text-xs text-red-600">{errors.num_installments}</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Interest Rate (% / yr)
-              </label>
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                value={form.interest_rate}
-                onChange={(e) => set("interest_rate", e.target.value)}
-                placeholder="0"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-              />
-            </div>
+            )}
+            {errors.financial_institution_id && (
+              <p className="mt-1 text-xs text-red-600">{errors.financial_institution_id}</p>
+            )}
           </div>
-          {financeAmount > 0 && numInstallments > 0 && (
-            <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm space-y-1">
-              <div className="flex justify-between text-gray-600">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Finance Reference Number
+            </label>
+            <input
+              type="text"
+              value={form.finance_reference_number}
+              onChange={(e) => set("finance_reference_number", e.target.value)}
+              placeholder="Optional reference number"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+          </div>
+          {financeAmount > 0 && (
+            <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm">
+              <div className="flex justify-between text-blue-700">
                 <span>Finance amount</span>
-                <span>{formatPrice(financeAmount)}</span>
+                <span className="font-semibold">{formatPrice(financeAmount)}</span>
               </div>
-              {totalInterest > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>Total interest</span>
-                  <span>{formatPrice(totalInterest)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-semibold text-gray-900 pt-1 border-t border-gray-200">
-                <span>Monthly payment</span>
-                <span>{formatPrice(monthlyPayment)}</span>
-              </div>
+              <p className="text-xs text-blue-500 mt-1">
+                Installment terms will be set when linking this sale to a contract.
+              </p>
             </div>
           )}
         </>
+      )}
+
+      {/* Installment — no terms at sale level, managed via contract */}
+      {form.payment_method === "installment" && financeAmount > 0 && (
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm">
+          <div className="flex justify-between text-gray-700">
+            <span>Finance amount</span>
+            <span className="font-semibold">{formatPrice(financeAmount)}</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Installment schedule will be set when creating a contract for this sale.
+          </p>
+        </div>
       )}
 
       <div>
@@ -506,21 +545,36 @@ function StepConfirm({
   motorcycle,
   pricing,
   addonIds,
+  financialInstitutions,
 }: {
   customer: Customer;
   motorcycle: Motorcycle;
   pricing: PricingForm;
   addonIds: string[];
+  financialInstitutions: FinancialInstitution[];
 }) {
   const totalPrice = parseFloat(pricing.total_price) || 0;
   const downPayment = parseFloat(pricing.down_payment) || 0;
   const financeAmount = Math.max(0, totalPrice - downPayment);
-  const numInstallments = parseInt(pricing.num_installments) || 0;
-  const interestRate = parseFloat(pricing.interest_rate) || 0;
+
+  const selectedFI = financialInstitutions.find(
+    (fi) => fi.id === pricing.financial_institution_id
+  );
 
   return (
     <div>
       <h3 className="text-sm font-semibold text-gray-900 mb-3">Confirm Sale</h3>
+
+      {/* Cash auto-complete notice */}
+      {pricing.payment_method === "cash" && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2.5">
+          <span className="text-green-600 text-sm">✓</span>
+          <p className="text-sm text-green-700">
+            This cash sale will be marked as <strong>completed</strong> immediately.
+          </p>
+        </div>
+      )}
+
       <div className="bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-200">
         <div className="px-4 py-3">
           <p className="text-xs text-gray-500 mb-0.5">Customer</p>
@@ -539,7 +593,7 @@ function StepConfirm({
         <div className="px-4 py-3 space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-500">Payment method</span>
-            <span className="font-medium capitalize">{pricing.payment_method}</span>
+            <span className="font-medium">{PAYMENT_METHOD_LABELS[pricing.payment_method]}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Total price</span>
@@ -549,20 +603,31 @@ function StepConfirm({
             <span className="text-gray-500">Down payment</span>
             <span className="font-medium">{formatPrice(downPayment)}</span>
           </div>
-          {pricing.payment_method === "installment" && (
+          {pricing.payment_method !== "cash" && financeAmount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Finance amount</span>
+              <span className="font-medium">{formatPrice(financeAmount)}</span>
+            </div>
+          )}
+          {pricing.payment_method === "finance_company" && (
             <>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Finance amount</span>
-                <span className="font-medium">{formatPrice(financeAmount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Installments</span>
-                <span className="font-medium">{numInstallments} months</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Interest rate</span>
-                <span className="font-medium">{interestRate}% / year</span>
-              </div>
+              {selectedFI ? (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Financial institution</span>
+                  <span className="font-medium">{selectedFI.name}</span>
+                </div>
+              ) : pricing.financial_institution_id ? (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Financial institution</span>
+                  <span className="font-medium">{pricing.financial_institution_id}</span>
+                </div>
+              ) : null}
+              {pricing.finance_reference_number && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Reference #</span>
+                  <span className="font-medium">{pricing.finance_reference_number}</span>
+                </div>
+              )}
             </>
           )}
           {addonIds.length > 0 && (
@@ -586,11 +651,11 @@ function StepConfirm({
 // ─── New Sale Modal Form ──────────────────────────────────────────────────────
 
 const INITIAL_PRICING: PricingForm = {
-  payment_method: "installment",
+  payment_method: "finance_company",
   total_price: "",
   down_payment: "",
-  num_installments: "12",
-  interest_rate: "0",
+  financial_institution_id: "",
+  finance_reference_number: "",
   notes: "",
 };
 
@@ -609,6 +674,8 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
   const [pricingErrors, setPricingErrors] = useState<Partial<PricingForm>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Cache financial institutions fetched during StepPricing for use in StepConfirm
+  const [financialInstitutions, setFinancialInstitutions] = useState<FinancialInstitution[]>([]);
 
   // Pre-fill customer when navigated from customer detail page
   useEffect(() => {
@@ -621,6 +688,13 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
         .catch(() => {});
     }
   }, [prefilledCustomerId, customer]);
+
+  // Fetch financial institutions for the confirm step display
+  useEffect(() => {
+    apiFetch<{ data: FinancialInstitution[] }>("/financial-institutions?active=true")
+      .then((res) => setFinancialInstitutions(res.data))
+      .catch(() => setFinancialInstitutions([]));
+  }, []);
 
   function toggleAddon(id: string) {
     setAddonIds((prev) =>
@@ -639,12 +713,10 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
       errors.down_payment = "Enter a valid down payment";
     }
     if (
-      pricing.payment_method === "installment" &&
-      (!pricing.num_installments ||
-        isNaN(parseInt(pricing.num_installments)) ||
-        parseInt(pricing.num_installments) < 1)
+      pricing.payment_method === "finance_company" &&
+      !pricing.financial_institution_id.trim()
     ) {
-      errors.num_installments = "Enter a valid number of installments";
+      errors.financial_institution_id = "Select or enter a financial institution";
     }
     setPricingErrors(errors);
     return Object.keys(errors).length === 0;
@@ -660,6 +732,12 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     if (!customer || !motorcycle) return;
     setSubmitting(true);
     setSubmitError(null);
+
+    // Resolve FI name from dropdown if applicable
+    const selectedFI = financialInstitutions.find(
+      (fi) => fi.id === pricing.financial_institution_id
+    );
+
     try {
       const body: Record<string, unknown> = {
         customer_id: customer.id,
@@ -667,15 +745,17 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
         total_price: parseFloat(pricing.total_price),
         down_payment: parseFloat(pricing.down_payment) || 0,
         payment_method: pricing.payment_method,
-        num_installments:
-          pricing.payment_method === "installment"
-            ? parseInt(pricing.num_installments)
-            : 1,
-        interest_rate:
-          pricing.payment_method === "installment"
-            ? parseFloat(pricing.interest_rate) || 0
-            : 0,
       };
+      if (pricing.payment_method === "finance_company") {
+        // Send name for current backend compatibility; ID for when backend supports it
+        body.finance_company_name = selectedFI?.name ?? pricing.financial_institution_id;
+        if (selectedFI) {
+          body.financial_institution_id = selectedFI.id;
+        }
+        if (pricing.finance_reference_number.trim()) {
+          body.finance_reference_number = pricing.finance_reference_number.trim();
+        }
+      }
       if (addonIds.length > 0) body.addon_ids = addonIds;
       if (pricing.notes.trim()) body.notes = pricing.notes.trim();
 
@@ -720,6 +800,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
           motorcycle={motorcycle}
           pricing={pricing}
           addonIds={addonIds}
+          financialInstitutions={financialInstitutions}
         />
       )}
 
@@ -878,7 +959,7 @@ function SalesPageInner() {
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Method</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">Total Price</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">Down Payment</th>
-                  <th className="text-center px-5 py-3 font-medium text-gray-500">Installments</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">Finance Amount</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
                   <th className="px-5 py-3" />
                 </tr>
@@ -913,15 +994,19 @@ function SalesPageInner() {
                       className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
                     >
                       <td className="px-5 py-3 text-gray-600">{formatDate(sale.saleDate)}</td>
-                      <td className="px-5 py-3 text-gray-600 capitalize">{sale.paymentMethod}</td>
+                      <td className="px-5 py-3 text-gray-600">
+                        {PAYMENT_METHOD_LABELS[sale.paymentMethod as PaymentMethod] ?? sale.paymentMethod}
+                      </td>
                       <td className="px-5 py-3 text-right font-medium text-gray-900">
                         {formatPrice(sale.totalPrice)}
                       </td>
                       <td className="px-5 py-3 text-right text-gray-600">
                         {formatPrice(sale.downPayment)}
                       </td>
-                      <td className="px-5 py-3 text-center text-gray-600">
-                        {sale.paymentMethod === "installment" ? sale.numInstallments : "—"}
+                      <td className="px-5 py-3 text-right text-gray-600">
+                        {sale.paymentMethod !== "cash" && sale.financeAmount > 0
+                          ? formatPrice(sale.financeAmount)
+                          : "—"}
                       </td>
                       <td className="px-5 py-3">
                         <span

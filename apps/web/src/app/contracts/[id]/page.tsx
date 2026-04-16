@@ -6,7 +6,7 @@ import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
 import { toastSuccess, alertError, confirm } from "@/lib/swal";
-import type { ContractDetail, ContractInstallment } from "@csyfinproj/shared";
+import type { ContractDetail, ContractInstallment, ContractParty } from "@csyfinproj/shared";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,6 +55,18 @@ const CONTRACT_STATUSES: Array<{ value: string; label: string }> = [
   { value: "defaulted", label: "Defaulted" },
   { value: "cancelled", label: "Cancelled" },
 ];
+
+const CONTRACT_PARTY_ROLE_LABELS: Record<ContractParty["role"], string> = {
+  owner: "Owner (Financial Institution)",
+  buyer: "Buyer (Customer)",
+  seller: "Seller (Shop)",
+};
+
+const CONTRACT_PARTY_ROLE_STYLES: Record<ContractParty["role"], string> = {
+  owner: "bg-purple-50 text-purple-700",
+  buyer: "bg-blue-50 text-blue-700",
+  seller: "bg-green-50 text-green-700",
+};
 
 // ─── Info Row component ────────────────────────────────────────────────────────
 
@@ -200,6 +212,14 @@ export default function ContractDetailPage() {
   const paidInstallments = contract.installments.filter((i) => i.status === "paid").length;
   const totalPaid = contract.payments.reduce((sum, p) => sum + p.amount, 0);
 
+  // Determine if installments have amortization data
+  const hasAmortizationData = contract.installments.some(
+    (i) => i.principalPortion != null || i.interestPortion != null
+  );
+
+  // Contract parties from the response (may be undefined for older contracts)
+  const contractParties: ContractParty[] = contract.contractParties ?? [];
+
   return (
     <DashboardLayout>
       <div className="px-8 py-8 max-w-5xl">
@@ -281,6 +301,36 @@ export default function ContractDetailPage() {
               </div>
             </div>
 
+            {/* Contract Parties (3-party display) */}
+            {contractParties.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    Contract Parties ({contractParties.length})
+                  </h2>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {contractParties.map((party) => (
+                    <div key={party.id} className="px-5 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{party.partyName}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {CONTRACT_PARTY_ROLE_LABELS[party.role] ?? party.role}
+                        </p>
+                      </div>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                          CONTRACT_PARTY_ROLE_STYLES[party.role] ?? "bg-gray-100 text-gray-500"
+                        }`}
+                      >
+                        {party.role}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Linked Sales */}
             {contract.contractSales.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -295,7 +345,7 @@ export default function ContractDetailPage() {
                       <tr className="border-b border-gray-100 bg-gray-50">
                         <th className="text-left px-5 py-3 font-medium text-gray-500">Date</th>
                         <th className="text-left px-5 py-3 font-medium text-gray-500">Motorcycle</th>
-                        <th className="text-right px-5 py-3 font-medium text-gray-500">Amount</th>
+                        <th className="text-right px-5 py-3 font-medium text-gray-500">Finance Amount</th>
                         <th className="px-5 py-3" />
                       </tr>
                     </thead>
@@ -311,7 +361,7 @@ export default function ContractDetailPage() {
                             <p className="text-xs text-gray-500">{cs.sale.motorcycle.chassisNumber}</p>
                           </td>
                           <td className="px-5 py-3 text-right text-gray-900">
-                            {formatPrice(cs.sale.totalPrice)}
+                            {formatPrice(cs.sale.financeAmount)}
                           </td>
                           <td className="px-5 py-3 text-right">
                             <Link
@@ -350,8 +400,17 @@ export default function ContractDetailPage() {
                       <tr className="border-b border-gray-100 bg-gray-50">
                         <th className="text-center px-4 py-3 font-medium text-gray-500">#</th>
                         <th className="text-left px-4 py-3 font-medium text-gray-500">Due Date</th>
+                        {hasAmortizationData && (
+                          <>
+                            <th className="text-right px-4 py-3 font-medium text-gray-500">Principal</th>
+                            <th className="text-right px-4 py-3 font-medium text-gray-500">Interest</th>
+                          </>
+                        )}
                         <th className="text-right px-4 py-3 font-medium text-gray-500">Amount Due</th>
-                        <th className="text-right px-4 py-3 font-medium text-gray-500">Amount Paid</th>
+                        {hasAmortizationData && (
+                          <th className="text-right px-4 py-3 font-medium text-gray-500">Balance</th>
+                        )}
+                        <th className="text-right px-4 py-3 font-medium text-gray-500">Paid</th>
                         <th className="text-center px-4 py-3 font-medium text-gray-500">Status</th>
                       </tr>
                     </thead>
@@ -360,7 +419,28 @@ export default function ContractDetailPage() {
                         <tr key={inst.id} className="border-b border-gray-50 hover:bg-gray-50">
                           <td className="px-4 py-3 text-center text-gray-500">{inst.installmentNumber}</td>
                           <td className="px-4 py-3 text-gray-600">{formatDate(inst.dueDate)}</td>
+                          {hasAmortizationData && (
+                            <>
+                              <td className="px-4 py-3 text-right text-gray-700">
+                                {inst.principalPortion != null
+                                  ? formatPrice(inst.principalPortion)
+                                  : "—"}
+                              </td>
+                              <td className="px-4 py-3 text-right text-gray-500">
+                                {inst.interestPortion != null && inst.interestPortion > 0
+                                  ? formatPrice(inst.interestPortion)
+                                  : "—"}
+                              </td>
+                            </>
+                          )}
                           <td className="px-4 py-3 text-right text-gray-900">{formatPrice(inst.amountDue)}</td>
+                          {hasAmortizationData && (
+                            <td className="px-4 py-3 text-right text-gray-500">
+                              {inst.remainingBalance != null
+                                ? formatPrice(inst.remainingBalance)
+                                : "—"}
+                            </td>
+                          )}
                           <td className="px-4 py-3 text-right text-gray-600">{formatPrice(inst.amountPaid)}</td>
                           <td className="px-4 py-3 text-center">
                             <span

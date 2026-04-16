@@ -51,6 +51,59 @@ const STATUS_OPTIONS = [
 
 const PAGE_SIZE = 20;
 
+// ─── Amortization helpers ──────────────────────────────────────────────────────
+
+interface AmortizationRow {
+  num: number;
+  dueDate: Date;
+  principal: number;
+  interest: number;
+  balance: number;
+  amountDue: number;
+}
+
+function computeAmortizationSchedule(
+  principal: number,
+  annualRate: number,
+  numInstallments: number,
+  startDate: Date
+): AmortizationRow[] {
+  if (numInstallments <= 0 || principal <= 0) return [];
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+
+  const rows: AmortizationRow[] = [];
+
+  if (annualRate === 0) {
+    const base = round2(principal / numInstallments);
+    let remaining = principal;
+    for (let i = 1; i <= numInstallments; i++) {
+      const p = i === numInstallments ? round2(remaining) : base;
+      remaining = round2(remaining - p);
+      const due = new Date(startDate);
+      due.setMonth(due.getMonth() + i);
+      rows.push({ num: i, dueDate: due, principal: p, interest: 0, balance: remaining, amountDue: p });
+    }
+    return rows;
+  }
+
+  const r = annualRate / 12 / 100;
+  const factor = Math.pow(1 + r, numInstallments);
+  const emi = round2((principal * r * factor) / (factor - 1));
+
+  let remaining = principal;
+  for (let i = 1; i <= numInstallments; i++) {
+    const interest = round2(remaining * r);
+    let principalPart = i === numInstallments ? round2(remaining) : round2(emi - interest);
+    remaining = round2(remaining - principalPart);
+    const amountDue = i === numInstallments ? round2(principalPart + interest) : emi;
+    const due = new Date(startDate);
+    due.setMonth(due.getMonth() + i);
+    rows.push({ num: i, dueDate: due, principal: principalPart, interest, balance: remaining, amountDue });
+  }
+
+  return rows;
+}
+
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
 const STEPS = ["Customer", "Sales", "Terms", "Preview"];
@@ -171,18 +224,20 @@ function StepCustomer({
 function StepSales({
   customerId,
   selectedIds,
-  onToggle,
+  onToggleSale,
 }: {
   customerId: string;
   selectedIds: string[];
-  onToggle: (id: string) => void;
+  onToggleSale: (sale: Sale) => void;
 }) {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    apiFetch<PaginatedResponse<Sale>>(`/sales?customer_id=${customerId}&status=active&limit=50`)
+    apiFetch<PaginatedResponse<Sale>>(
+      `/sales?customer_id=${customerId}&payment_method=finance_company&status=active&limit=50`
+    )
       .then((res) => setSales(res.data))
       .catch(() => setSales([]))
       .finally(() => setLoading(false));
@@ -191,13 +246,18 @@ function StepSales({
   return (
     <div>
       <h3 className="text-sm font-semibold text-gray-900 mb-0.5">Link Sales Orders</h3>
-      <p className="text-xs text-gray-500 mb-3">Optional. Select active sales to link to this contract.</p>
+      <p className="text-xs text-gray-500 mb-3">
+        Optional. Select finance-company sales to link. Principal will be auto-suggested from the
+        selected sales' finance amounts.
+      </p>
       {loading ? (
         Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse mb-2" />
         ))
       ) : sales.length === 0 ? (
-        <p className="text-sm text-gray-400 py-4 text-center">No active sales found for this customer.</p>
+        <p className="text-sm text-gray-400 py-4 text-center">
+          No active finance-company sales found for this customer.
+        </p>
       ) : (
         <div className="space-y-1.5 max-h-52 overflow-y-auto">
           {sales.map((sale) => {
@@ -206,7 +266,7 @@ function StepSales({
               <button
                 key={sale.id}
                 type="button"
-                onClick={() => onToggle(sale.id)}
+                onClick={() => onToggleSale(sale)}
                 className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
                   isSelected
                     ? "border-primary-500 bg-primary-50"
@@ -226,9 +286,11 @@ function StepSales({
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {formatDate(sale.saleDate)} · {sale.paymentMethod}
+                        {formatDate(sale.saleDate)} · {sale.financeCompanyName ?? "Finance Co."}
                       </p>
-                      <p className="text-xs text-gray-500">{formatPrice(sale.totalPrice)}</p>
+                      <p className="text-xs text-gray-500">
+                        Finance: {formatPrice(sale.financeAmount)} · Total: {formatPrice(sale.totalPrice)}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -238,7 +300,9 @@ function StepSales({
         </div>
       )}
       {selectedIds.length > 0 && (
-        <p className="mt-2 text-xs text-primary-600 font-medium">{selectedIds.length} sale(s) selected</p>
+        <p className="mt-2 text-xs text-primary-600 font-medium">
+          {selectedIds.length} sale(s) selected
+        </p>
       )}
     </div>
   );
@@ -254,35 +318,63 @@ interface TermsForm {
   notes: string;
 }
 
-function computeSchedulePreview(form: TermsForm) {
-  const principal = parseFloat(form.total_principal) || 0;
-  const rate = parseFloat(form.interest_rate) || 0;
-  const n = parseInt(form.num_installments) || 0;
-  const totalInterest = (principal * rate * n) / 1200;
-  const totalAmount = principal + totalInterest;
-  const monthlyPayment = n > 0 ? totalAmount / n : 0;
-  return { principal, rate, n, totalInterest, totalAmount, monthlyPayment };
-}
-
 function StepTerms({
   form,
   onChange,
   errors,
+  suggestedPrincipal,
 }: {
   form: TermsForm;
   onChange: (f: TermsForm) => void;
   errors: Partial<Record<keyof TermsForm, string>>;
+  suggestedPrincipal: number;
 }) {
   const set = (field: keyof TermsForm, value: string) =>
     onChange({ ...form, [field]: value });
 
-  const { totalInterest, totalAmount, monthlyPayment } = computeSchedulePreview(form);
   const principal = parseFloat(form.total_principal) || 0;
+  const rate = parseFloat(form.interest_rate) || 0;
   const n = parseInt(form.num_installments) || 0;
+
+  // Compute preview totals using EMI formula (matches backend logic)
+  let totalInterest = 0;
+  let totalAmount = principal;
+  let monthlyPayment = 0;
+  if (n > 0 && principal > 0) {
+    if (rate === 0) {
+      totalInterest = 0;
+      totalAmount = principal;
+      monthlyPayment = Math.round((principal / n) * 100) / 100;
+    } else {
+      const r = rate / 12 / 100;
+      const factor = Math.pow(1 + r, n);
+      monthlyPayment = Math.round(((principal * r * factor) / (factor - 1)) * 100) / 100;
+      totalAmount = Math.round(monthlyPayment * (n - 1) * 100) / 100;
+      // Approximate; exact total computed server-side
+      totalInterest = Math.round((totalAmount - principal) * 100) / 100;
+      totalAmount = principal + totalInterest;
+    }
+  }
 
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-gray-900">Contract Terms</h3>
+
+      {suggestedPrincipal > 0 && (
+        <div className="flex items-center justify-between rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
+          <p className="text-sm text-blue-700">
+            Suggested principal from linked sales:{" "}
+            <strong>{formatPrice(suggestedPrincipal)}</strong>
+          </p>
+          <button
+            type="button"
+            onClick={() => set("total_principal", String(suggestedPrincipal))}
+            className="text-xs text-blue-600 font-medium hover:text-blue-800 ml-3 shrink-0"
+          >
+            Apply
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -294,7 +386,7 @@ function StepTerms({
             min={1}
             value={form.total_principal}
             onChange={(e) => set("total_principal", e.target.value)}
-            placeholder="e.g. 50000"
+            placeholder={suggestedPrincipal > 0 ? String(suggestedPrincipal) : "e.g. 50000"}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
           {errors.total_principal && (
@@ -388,7 +480,7 @@ function StepTerms({
   );
 }
 
-// ─── Step 4 — Installment Preview ─────────────────────────────────────────────
+// ─── Step 4 — Preview ─────────────────────────────────────────────────────────
 
 function StepPreview({
   customer,
@@ -399,18 +491,21 @@ function StepPreview({
   form: TermsForm;
   saleCount: number;
 }) {
-  const { principal, totalInterest, totalAmount, monthlyPayment, n } =
-    computeSchedulePreview(form);
-
+  const principal = parseFloat(form.total_principal) || 0;
+  const rate = parseFloat(form.interest_rate) || 0;
+  const n = parseInt(form.num_installments) || 0;
   const startDate = form.start_date ? new Date(form.start_date) : null;
 
-  const previewRows = startDate && n > 0
-    ? Array.from({ length: Math.min(n, 6) }, (_, i) => {
-        const due = new Date(startDate);
-        due.setMonth(due.getMonth() + i + 1);
-        return { num: i + 1, dueDate: due };
-      })
+  const schedule = startDate && n > 0 && principal > 0
+    ? computeAmortizationSchedule(principal, rate, n, startDate)
     : [];
+
+  // Summary totals
+  const totalInterest = schedule.reduce((s, r) => s + r.interest, 0);
+  const totalAmount = principal + totalInterest;
+
+  const previewRows = schedule.slice(0, 6);
+  const hasMore = schedule.length > 6;
 
   return (
     <div>
@@ -430,10 +525,12 @@ function StepPreview({
             <span className="text-gray-500">Interest rate</span>
             <span className="font-medium">{form.interest_rate || 0}% / yr</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Total interest</span>
-            <span className="font-medium">{formatPrice(totalInterest)}</span>
-          </div>
+          {totalInterest > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Total interest</span>
+              <span className="font-medium">{formatPrice(totalInterest)}</span>
+            </div>
+          )}
           <div className="flex justify-between font-semibold text-gray-900">
             <span>Total amount</span>
             <span>{formatPrice(totalAmount)}</span>
@@ -443,12 +540,10 @@ function StepPreview({
             <span className="font-medium">{n} months</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Monthly payment</span>
-            <span className="font-medium">{formatPrice(monthlyPayment)}</span>
-          </div>
-          <div className="flex justify-between">
             <span className="text-gray-500">Start date</span>
-            <span className="font-medium">{form.start_date ? formatDate(form.start_date) : "—"}</span>
+            <span className="font-medium">
+              {form.start_date ? formatDate(form.start_date) : "—"}
+            </span>
           </div>
           {saleCount > 0 && (
             <div className="flex justify-between">
@@ -462,34 +557,52 @@ function StepPreview({
       {previewRows.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Installment Schedule Preview {n > 6 ? `(first 6 of ${n})` : ""}
+            Amortization Schedule {n > 6 ? `(first 6 of ${n})` : ""}
           </p>
-          <div className="rounded-lg border border-gray-200 overflow-hidden text-sm">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">#</th>
-                  <th className="px-3 py-2 text-left font-medium text-gray-500 text-xs">Due Date</th>
-                  <th className="px-3 py-2 text-right font-medium text-gray-500 text-xs">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {previewRows.map((row) => (
-                  <tr key={row.num} className="border-b border-gray-50">
-                    <td className="px-3 py-1.5 text-gray-600 text-xs">{row.num}</td>
-                    <td className="px-3 py-1.5 text-gray-600 text-xs">{formatDate(row.dueDate.toISOString())}</td>
-                    <td className="px-3 py-1.5 text-right text-gray-900 text-xs">{formatPrice(monthlyPayment)}</td>
+          <div className="rounded-lg border border-gray-200 overflow-hidden text-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">#</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-500">Due Date</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500">Principal</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500">Interest</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500">Total</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-500">Balance</th>
                   </tr>
-                ))}
-                {n > 6 && (
-                  <tr>
-                    <td colSpan={3} className="px-3 py-2 text-center text-xs text-gray-400">
-                      + {n - 6} more installments
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {previewRows.map((row) => (
+                    <tr key={row.num} className="border-b border-gray-50">
+                      <td className="px-3 py-1.5 text-gray-600">{row.num}</td>
+                      <td className="px-3 py-1.5 text-gray-600">
+                        {formatDate(row.dueDate.toISOString())}
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-gray-700">
+                        {formatPrice(row.principal)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-gray-500">
+                        {row.interest > 0 ? formatPrice(row.interest) : "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-medium text-gray-900">
+                        {formatPrice(row.amountDue)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-gray-500">
+                        {formatPrice(row.balance)}
+                      </td>
+                    </tr>
+                  ))}
+                  {hasMore && (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-2 text-center text-gray-400">
+                        + {n - 6} more installments
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -515,14 +628,26 @@ interface NewContractFormProps {
 function NewContractForm({ onSuccess, onCancel }: NewContractFormProps) {
   const [step, setStep] = useState(1);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [saleIds, setSaleIds] = useState<string[]>([]);
+  // Track full Sale objects to compute suggested principal
+  const [selectedSales, setSelectedSales] = useState<Sale[]>([]);
   const [terms, setTerms] = useState<TermsForm>(INITIAL_TERMS);
   const [termsErrors, setTermsErrors] = useState<Partial<Record<keyof TermsForm, string>>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  function toggleSale(id: string) {
-    setSaleIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const saleIds = selectedSales.map((s) => s.id);
+
+  // Sum of finance amounts from selected sales
+  const suggestedPrincipal = selectedSales.reduce(
+    (sum, s) => sum + (s.financeAmount ?? 0),
+    0
+  );
+
+  function toggleSale(sale: Sale) {
+    setSelectedSales((prev) => {
+      const exists = prev.find((s) => s.id === sale.id);
+      return exists ? prev.filter((s) => s.id !== sale.id) : [...prev, sale];
+    });
   }
 
   function validateTerms(): boolean {
@@ -594,10 +719,19 @@ function NewContractForm({ onSuccess, onCancel }: NewContractFormProps) {
 
       {step === 1 && <StepCustomer selected={customer} onSelect={setCustomer} />}
       {step === 2 && customer && (
-        <StepSales customerId={customer.id} selectedIds={saleIds} onToggle={toggleSale} />
+        <StepSales
+          customerId={customer.id}
+          selectedIds={saleIds}
+          onToggleSale={toggleSale}
+        />
       )}
       {step === 3 && (
-        <StepTerms form={terms} onChange={setTerms} errors={termsErrors} />
+        <StepTerms
+          form={terms}
+          onChange={setTerms}
+          errors={termsErrors}
+          suggestedPrincipal={suggestedPrincipal}
+        />
       )}
       {step === 4 && customer && (
         <StepPreview customer={customer} form={terms} saleCount={saleIds.length} />

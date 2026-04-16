@@ -62,6 +62,12 @@ const SALE_STATUS_STYLES: Record<string, string> = {
   cancelled: "bg-gray-100 text-gray-500",
 };
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: "Cash",
+  installment: "Installment",
+  finance_company: "Finance Company",
+};
+
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function SaleDetailPage() {
@@ -121,6 +127,10 @@ export default function SaleDetailPage() {
     );
   }
 
+  const isInstallment = sale.paymentMethod === "installment";
+  const isFinanceCompany = sale.paymentMethod === "finance_company";
+  const isCash = sale.paymentMethod === "cash";
+
   const paidCount = sale.installments.filter((i) => i.status === "paid").length;
   const overdueCount = sale.installments.filter(
     (i) => i.status === "overdue"
@@ -167,6 +177,27 @@ export default function SaleDetailPage() {
           </div>
         </div>
 
+        {/* Cash completed notice */}
+        {isCash && (
+          <div className="mb-6 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3">
+            <span className="text-green-600">✓</span>
+            <p className="text-sm text-green-700">
+              This cash sale was completed immediately upon creation.
+            </p>
+          </div>
+        )}
+
+        {/* Finance company notice */}
+        {isFinanceCompany && (
+          <div className="mb-6 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
+            <p className="text-sm text-blue-700">
+              This sale is financed via{" "}
+              <strong>{sale.financeCompanyName ?? "a financial institution"}</strong>.
+              Installment terms are managed through the linked contract.
+            </p>
+          </div>
+        )}
+
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -181,22 +212,28 @@ export default function SaleDetailPage() {
               {formatPrice(sale.downPayment)}
             </p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">Paid</p>
-            <p className="text-lg font-bold text-green-600">
-              {formatPrice(totalPaid)}
-            </p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">Remaining</p>
-            <p
-              className={`text-lg font-bold ${
-                remaining > 0 ? "text-gray-900" : "text-green-600"
-              }`}
-            >
-              {formatPrice(Math.max(0, remaining))}
-            </p>
-          </div>
+          {!isCash && (
+            <>
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <p className="text-xs text-gray-500 mb-1">Finance Amount</p>
+                <p className="text-lg font-bold text-gray-900">
+                  {formatPrice(sale.financeAmount)}
+                </p>
+              </div>
+              {isInstallment && (
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-500 mb-1">Remaining</p>
+                  <p
+                    className={`text-lg font-bold ${
+                      remaining > 0 ? "text-gray-900" : "text-green-600"
+                    }`}
+                  >
+                    {formatPrice(Math.max(0, remaining))}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* Info sections */}
@@ -242,10 +279,25 @@ export default function SaleDetailPage() {
         {/* Sale details */}
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 mb-6">
           {[
-            { label: "Payment Method", value: <span className="capitalize">{sale.paymentMethod}</span> },
-            ...(sale.paymentMethod === "installment"
+            {
+              label: "Payment Method",
+              value: (
+                <span className="capitalize">
+                  {PAYMENT_METHOD_LABELS[sale.paymentMethod] ?? sale.paymentMethod}
+                </span>
+              ),
+            },
+            ...(isFinanceCompany && sale.financeCompanyName
+              ? [{ label: "Financial Institution", value: sale.financeCompanyName }]
+              : []),
+            ...(isFinanceCompany && sale.financeReferenceNumber
+              ? [{ label: "Finance Reference #", value: sale.financeReferenceNumber }]
+              : []),
+            ...(!isCash
+              ? [{ label: "Finance Amount", value: formatPrice(sale.financeAmount) }]
+              : []),
+            ...(isInstallment
               ? [
-                  { label: "Finance Amount", value: formatPrice(sale.financeAmount) },
                   { label: "Installments", value: `${sale.numInstallments} months` },
                   { label: "Interest Rate", value: `${sale.interestRate}% / year` },
                   {
@@ -271,9 +323,7 @@ export default function SaleDetailPage() {
                   },
                 ]
               : []),
-            ...(sale.notes
-              ? [{ label: "Notes", value: sale.notes }]
-              : []),
+            ...(sale.notes ? [{ label: "Notes", value: sale.notes }] : []),
           ].map(({ label, value }) => (
             <div
               key={label}
@@ -285,72 +335,88 @@ export default function SaleDetailPage() {
           ))}
         </div>
 
-        {/* Installment schedule */}
-        {sale.paymentMethod === "installment" &&
-          sale.installments.length > 0 && (
-            <div>
-              <h2 className="text-base font-semibold text-gray-900 mb-3">
-                Installment Schedule
-              </h2>
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50">
-                        <th className="text-center px-5 py-3 font-medium text-gray-500 w-12">
-                          #
-                        </th>
-                        <th className="text-left px-5 py-3 font-medium text-gray-500">
-                          Due Date
-                        </th>
-                        <th className="text-right px-5 py-3 font-medium text-gray-500">
-                          Amount Due
-                        </th>
-                        <th className="text-right px-5 py-3 font-medium text-gray-500">
-                          Paid
-                        </th>
-                        <th className="text-left px-5 py-3 font-medium text-gray-500">
-                          Status
-                        </th>
+        {/* Installment schedule — only for installment payment method */}
+        {isInstallment && sale.installments.length > 0 && (
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 mb-3">
+              Installment Schedule
+            </h2>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="text-center px-5 py-3 font-medium text-gray-500 w-12">
+                        #
+                      </th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">
+                        Due Date
+                      </th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">
+                        Amount Due
+                      </th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">
+                        Paid
+                      </th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sale.installments.map((installment) => (
+                      <tr
+                        key={installment.id}
+                        className={`border-b border-gray-50 ${
+                          installment.status === "overdue"
+                            ? "bg-red-50/30"
+                            : installment.status === "paid"
+                            ? "bg-green-50/20"
+                            : ""
+                        }`}
+                      >
+                        <td className="px-5 py-3 text-center text-gray-500">
+                          {installment.installmentNumber}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600">
+                          {formatDate(installment.dueDate)}
+                        </td>
+                        <td className="px-5 py-3 text-right text-gray-900">
+                          {formatPrice(installment.amountDue)}
+                        </td>
+                        <td className="px-5 py-3 text-right text-gray-600">
+                          {installment.amountPaid > 0
+                            ? formatPrice(installment.amountPaid)
+                            : "—"}
+                        </td>
+                        <td className="px-5 py-3">
+                          <InstallmentBadge status={installment.status} />
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {sale.installments.map((installment) => (
-                        <tr
-                          key={installment.id}
-                          className={`border-b border-gray-50 ${
-                            installment.status === "overdue"
-                              ? "bg-red-50/30"
-                              : installment.status === "paid"
-                              ? "bg-green-50/20"
-                              : ""
-                          }`}
-                        >
-                          <td className="px-5 py-3 text-center text-gray-500">
-                            {installment.installmentNumber}
-                          </td>
-                          <td className="px-5 py-3 text-gray-600">
-                            {formatDate(installment.dueDate)}
-                          </td>
-                          <td className="px-5 py-3 text-right text-gray-900">
-                            {formatPrice(installment.amountDue)}
-                          </td>
-                          <td className="px-5 py-3 text-right text-gray-600">
-                            {installment.amountPaid > 0
-                              ? formatPrice(installment.amountPaid)
-                              : "—"}
-                          </td>
-                          <td className="px-5 py-3">
-                            <InstallmentBadge status={installment.status} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          )}
+          </div>
+        )}
+
+        {/* Finance company — refer to contract */}
+        {isFinanceCompany && (
+          <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
+            <p className="text-sm font-semibold text-gray-900 mb-1">Installment Schedule</p>
+            <p className="text-sm text-gray-500">
+              Installment terms for this finance-company sale are managed through a linked contract.
+              View the contract to see the full amortization schedule.
+            </p>
+            <Link
+              href="/contracts"
+              className="mt-2 inline-block text-sm text-primary-600 hover:underline"
+            >
+              Go to Contracts →
+            </Link>
+          </div>
+        )}
 
         <div className="mt-6">
           <Link
