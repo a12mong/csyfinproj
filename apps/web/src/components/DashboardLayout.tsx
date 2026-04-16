@@ -12,6 +12,7 @@ const navItems = [
   { href: "/sales", label: "Sales", exact: false },
   { href: "/customers", label: "Customers", exact: false },
   { href: "/finance", label: "Finance", exact: false },
+  { href: "/payments", label: "Payments", exact: false },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
