@@ -22,9 +22,13 @@ export async function createSale(input: CreateSaleInput, userId: string) {
     },
   });
 
-  // Generate installment schedule
+  // Generate installment schedule using flat-rate interest calculation
+  // Total interest = financeAmount * (interestRate / 100) * (numInstallments / 12)
   const installments = [];
-  const monthlyAmount = financeAmount / input.num_installments;
+  const totalInterest =
+    financeAmount * (input.interest_rate / 100) * (input.num_installments / 12);
+  const totalRepayable = financeAmount + totalInterest;
+  const monthlyAmount = Math.round((totalRepayable / input.num_installments) * 100) / 100;
 
   for (let i = 1; i <= input.num_installments; i++) {
     const dueDate = new Date();
