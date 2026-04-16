@@ -36,6 +36,16 @@ export interface Motorcycle {
   deliveryNoteItemId?: string;
 }
 
+export interface FinancialInstitution {
+  id: string;
+  name: string;
+  code: string;
+  contactInfo?: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Sale {
   id: string;
   customerId: string;
