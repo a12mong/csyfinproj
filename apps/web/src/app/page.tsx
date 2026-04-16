@@ -1,28 +1,32 @@
+import ProtectedRoute from "@/components/ProtectedRoute";
+
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <h1 className="text-4xl font-bold text-gray-900 mb-4">CSYFinproj</h1>
-      <p className="text-lg text-gray-600 mb-8">
-        Yamaha Motorcycle Sales &amp; Finance Management
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl w-full">
-        <DashboardCard
-          title="Inventory"
-          description="Manage motorcycle stock"
-          href="/inventory"
-        />
-        <DashboardCard
-          title="Sales"
-          description="Track sales transactions"
-          href="/sales"
-        />
-        <DashboardCard
-          title="Finance"
-          description="Installments & payments"
-          href="/finance"
-        />
-      </div>
-    </main>
+    <ProtectedRoute>
+      <main className="flex min-h-screen flex-col items-center justify-center p-8">
+        <h1 className="text-4xl font-bold text-gray-900 mb-4">CSYFinproj</h1>
+        <p className="text-lg text-gray-600 mb-8">
+          Yamaha Motorcycle Sales &amp; Finance Management
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl w-full">
+          <DashboardCard
+            title="Inventory"
+            description="Manage motorcycle stock"
+            href="/inventory"
+          />
+          <DashboardCard
+            title="Sales"
+            description="Track sales transactions"
+            href="/sales"
+          />
+          <DashboardCard
+            title="Finance"
+            description="Installments & payments"
+            href="/finance"
+          />
+        </div>
+      </main>
+    </ProtectedRoute>
   );
 }
 
