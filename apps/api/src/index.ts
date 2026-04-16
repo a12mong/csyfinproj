@@ -10,11 +10,16 @@ import { addonsRouter } from "./modules/addons/addons.router.js";
 import { installmentsRouter } from "./modules/installments/installments.router.js";
 import { notificationsRouter } from "./modules/notifications/notifications.router.js";
 import { deliveryNotesRouter } from "./modules/grn/delivery-notes.router.js";
+import { lineWebhookRouter } from "./modules/webhooks/line-webhook.router.js";
 
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
+
+// Mount LINE webhook BEFORE express.json() so raw body is available for signature validation
+app.use("/api/v1/webhooks/line", lineWebhookRouter);
+
 app.use(express.json());
 
 // Serve uploaded slip images
