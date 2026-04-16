@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const listInstallmentsQuerySchema = z.object({
   sale_id: z.string().uuid().optional(),
+  contract_id: z.string().uuid().optional(),
   status: z.enum(["pending", "paid", "overdue", "partially_paid"]).optional(),
   overdue: z
     .string()

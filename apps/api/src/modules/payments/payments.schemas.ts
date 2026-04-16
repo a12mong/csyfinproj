@@ -3,13 +3,20 @@ import { z } from "zod";
 export const paymentChannelEnum = z.enum(["cash", "bank_transfer", "line"]);
 
 // Multipart/form-data body schema — amount comes in as string, coerce to number
-export const createPaymentBodySchema = z.object({
-  installment_id: z.string().uuid(),
-  amount: z.coerce.number().positive(),
-  payment_date: z.string().date(),
-  payment_channel: paymentChannelEnum.default("cash"),
-  notes: z.string().optional(),
-});
+// Either installment_id or contract_id must be provided (not both required)
+export const createPaymentBodySchema = z
+  .object({
+    installment_id: z.string().uuid().optional(),
+    contract_id: z.string().uuid().optional(),
+    amount: z.coerce.number().positive(),
+    payment_date: z.string().date(),
+    payment_channel: paymentChannelEnum.default("cash"),
+    notes: z.string().optional(),
+  })
+  .refine((d) => d.installment_id || d.contract_id, {
+    message: "Either installment_id or contract_id is required",
+    path: ["installment_id"],
+  });
 
 export const verifyPaymentSchema = z.object({
   verified: z.boolean(),
@@ -19,6 +26,8 @@ export const verifyPaymentSchema = z.object({
 export const listPaymentsQuerySchema = z.object({
   installment_id: z.string().uuid().optional(),
   contract_id: z.string().uuid().optional(),
+  contract_number: z.string().optional(),
+  sale_id: z.string().uuid().optional(),
   payment_channel: paymentChannelEnum.optional(),
   verified: z
     .string()
@@ -37,3 +46,7 @@ export type CreatePaymentInput = z.infer<typeof createPaymentBodySchema> & {
 };
 export type VerifyPaymentInput = z.infer<typeof verifyPaymentSchema>;
 export type ListPaymentsQuery = z.infer<typeof listPaymentsQuerySchema>;
+
+// Narrowed type after refine — at least one of installment_id/contract_id is present
+export type CreatePaymentInputResolved = CreatePaymentInput &
+  ({ installment_id: string; contract_id?: string } | { installment_id?: string; contract_id: string });

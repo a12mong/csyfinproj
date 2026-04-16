@@ -20,6 +20,7 @@ export const updateContractSchema = z.object({
 
 export const listContractsQuerySchema = z.object({
   customer_id: z.string().uuid().optional(),
+  sale_id: z.string().uuid().optional(),
   status: contractStatusEnum.optional(),
   q: z.string().optional(),
   page: z.coerce.number().int().positive().default(1),

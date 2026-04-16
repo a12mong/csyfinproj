@@ -62,7 +62,8 @@ export interface SaleWithInstallments extends Sale {
 
 export interface Installment {
   id: string;
-  saleId: string;
+  saleId: string | null;
+  contractId?: string | null;
   installmentNumber: number;
   dueDate: string;
   amountDue: number;
@@ -76,13 +77,15 @@ export interface InstallmentWithPayments extends Installment {
 
 export interface Payment {
   id: string;
-  installmentId: string;
+  installmentId: string | null;
+  contractId?: string | null;
   amount: number;
   paymentDate: string;
   paymentChannel: "cash" | "bank_transfer" | "line";
   slipImageUrl?: string;
   verified: boolean;
   lineMessageId?: string;
+  contract?: { id: string; contractNumber: string; customer?: { id: string; name: string } } | null;
 }
 
 export interface DeliveryNote {

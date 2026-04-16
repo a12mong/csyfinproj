@@ -9,10 +9,13 @@ import type {
   Installment,
   Payment,
   PaginatedResponse,
+  Contract,
 } from "@csyfinproj/shared";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+
+type ReferenceType = "installment" | "contract" | "sale";
 
 function formatPrice(n: number) {
   return new Intl.NumberFormat("th-TH", {
@@ -47,9 +50,29 @@ function PaymentsContent() {
   const searchParams = useSearchParams();
   const preselectedInstallmentId = searchParams.get("installmentId") ?? "";
 
+  // --- Reference type ---
+  const [refType, setRefType] = useState<ReferenceType>(
+    preselectedInstallmentId ? "installment" : "installment"
+  );
+
   // --- Record Payment Form ---
   const [installmentId, setInstallmentId] = useState(preselectedInstallmentId);
   const [installments, setInstallments] = useState<Installment[]>([]);
+
+  // Contract reference state
+  const [contractSearch, setContractSearch] = useState("");
+  const [contractSearchLoading, setContractSearchLoading] = useState(false);
+  const [foundContract, setFoundContract] = useState<Contract | null>(null);
+  const [contractInstallments, setContractInstallments] = useState<Installment[]>([]);
+  const [contractInstallmentId, setContractInstallmentId] = useState("");
+
+  // Sale/PO reference state
+  const [saleSearch, setSaleSearch] = useState("");
+  const [saleSearchLoading, setSaleSearchLoading] = useState(false);
+  const [saleContract, setSaleContract] = useState<Contract | null>(null);
+  const [saleContractInstallments, setSaleContractInstallments] = useState<Installment[]>([]);
+  const [saleInstallmentId, setSaleInstallmentId] = useState("");
+
   const [amount, setAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState(
     new Date().toISOString().slice(0, 10)
@@ -61,6 +84,7 @@ function PaymentsContent() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [paymentChannel, setPaymentChannel] = useState<"cash" | "bank_transfer" | "line">("cash");
 
   // --- Unverified Payments ---
   const [unverifiedPayments, setUnverifiedPayments] = useState<
@@ -70,11 +94,11 @@ function PaymentsContent() {
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
-  // Load pending/overdue installments for dropdown
+  // Load pending/overdue installments for dropdown (installment reference mode)
   const fetchInstallments = useCallback(async () => {
     try {
       const res = await apiFetch<PaginatedResponse<Installment>>(
-        `/installments?status=pending,overdue,partially_paid`
+        `/installments?status=pending`
       );
       setInstallments(res.data);
     } catch {
@@ -105,6 +129,65 @@ function PaymentsContent() {
     fetchUnverified();
   }, [fetchInstallments, fetchUnverified]);
 
+  // Search for a contract by number
+  async function handleContractSearch() {
+    const q = contractSearch.trim();
+    if (!q) return;
+    setContractSearchLoading(true);
+    setFoundContract(null);
+    setContractInstallments([]);
+    setContractInstallmentId("");
+    try {
+      const res = await apiFetch<PaginatedResponse<Contract>>(`/contracts?q=${encodeURIComponent(q)}`);
+      const contract = res.data[0] ?? null;
+      setFoundContract(contract);
+      if (contract) {
+        // Load open installments for this contract
+        const instRes = await apiFetch<PaginatedResponse<Installment>>(
+          `/installments?contract_id=${contract.id}&status=pending`
+        );
+        const openInsts = instRes.data;
+        setContractInstallments(openInsts);
+        // Pre-select the oldest unpaid
+        setContractInstallmentId(openInsts[0]?.id ?? "");
+      }
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : "Contract search failed");
+    } finally {
+      setContractSearchLoading(false);
+    }
+  }
+
+  // Search for a sale/PO and resolve to its contract
+  async function handleSaleSearch() {
+    const q = saleSearch.trim();
+    if (!q) return;
+    setSaleSearchLoading(true);
+    setSaleContract(null);
+    setSaleContractInstallments([]);
+    setSaleInstallmentId("");
+    try {
+      // Find contracts linked to this sale ID
+      const res = await apiFetch<PaginatedResponse<Contract>>(`/contracts?sale_id=${encodeURIComponent(q)}`);
+      const contract = res.data[0] ?? null;
+      setSaleContract(contract);
+      if (contract) {
+        const instRes = await apiFetch<PaginatedResponse<Installment>>(
+          `/installments?contract_id=${contract.id}&status=pending`
+        );
+        const openInsts = instRes.data;
+        setSaleContractInstallments(openInsts);
+        setSaleInstallmentId(openInsts[0]?.id ?? "");
+      } else {
+        alertError("No contract found for this Sale ID.");
+      }
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : "Sale search failed");
+    } finally {
+      setSaleSearchLoading(false);
+    }
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     setSlipFile(file);
@@ -116,28 +199,78 @@ function PaymentsContent() {
     }
   }
 
+  function resetForm() {
+    setAmount("");
+    setNotes("");
+    setSlipFile(null);
+    setSlipPreview(null);
+    setPaymentChannel("cash");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (refType === "installment") {
+      fetchInstallments();
+    } else if (refType === "contract") {
+      setFoundContract(null);
+      setContractSearch("");
+      setContractInstallments([]);
+      setContractInstallmentId("");
+    } else {
+      setSaleContract(null);
+      setSaleSearch("");
+      setSaleContractInstallments([]);
+      setSaleInstallmentId("");
+    }
+  }
+
   async function handleSubmitPayment(e: React.FormEvent) {
     e.preventDefault();
-    if (!installmentId || !amount || !paymentDate) {
-      setSubmitError("Installment, amount, and date are required.");
+    setSubmitError(null);
+    setSubmitSuccess(null);
+
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+    const formData = new FormData();
+    formData.append("amount", amount);
+    formData.append("payment_date", paymentDate);
+    formData.append("payment_channel", paymentChannel);
+    if (notes) formData.append("notes", notes);
+    if (slipFile) formData.append("slip_image", slipFile);
+
+    if (refType === "installment") {
+      if (!installmentId) {
+        setSubmitError("Please select an installment.");
+        return;
+      }
+      formData.append("installment_id", installmentId);
+    } else if (refType === "contract") {
+      if (!foundContract) {
+        setSubmitError("Please search and select a contract first.");
+        return;
+      }
+      formData.append("contract_id", foundContract.id);
+      // Optionally include selected installment to target a specific one
+      if (contractInstallmentId) {
+        formData.append("installment_id", contractInstallmentId);
+      }
+    } else {
+      // sale
+      if (!saleContract) {
+        setSubmitError("Please search and select a sale/PO first.");
+        return;
+      }
+      formData.append("contract_id", saleContract.id);
+      if (saleInstallmentId) {
+        formData.append("installment_id", saleInstallmentId);
+      }
+    }
+
+    if (!amount || !paymentDate) {
+      setSubmitError("Amount and date are required.");
       return;
     }
 
     setSubmitting(true);
-    setSubmitError(null);
-    setSubmitSuccess(null);
-
     try {
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-      const formData = new FormData();
-      formData.append("installment_id", installmentId);
-      formData.append("amount", amount);
-      formData.append("payment_date", paymentDate);
-      if (notes) formData.append("notes", notes);
-      if (slipFile) formData.append("slip_image", slipFile);
-
       const res = await fetch(`${API_BASE_URL}/payments`, {
         method: "POST",
         headers: {
@@ -153,13 +286,7 @@ function PaymentsContent() {
 
       toastSuccess("Payment recorded successfully");
       setSubmitSuccess("Payment recorded successfully.");
-      setAmount("");
-      setNotes("");
-      setSlipFile(null);
-      setSlipPreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      // Refresh lists
-      fetchInstallments();
+      resetForm();
       fetchUnverified();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to record payment";
@@ -171,7 +298,6 @@ function PaymentsContent() {
   }
 
   async function handleVerify(paymentId: string, verified: boolean) {
-    const action = verified ? "approve" : "reject";
     const confirmed = await confirm({
       title: verified ? "Approve Payment?" : "Reject Payment?",
       text: verified
@@ -191,7 +317,7 @@ function PaymentsContent() {
       toastSuccess(verified ? "Payment approved" : "Payment rejected");
       fetchUnverified();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : `Failed to ${action} payment`;
+      const msg = err instanceof Error ? err.message : `Failed to ${verified ? "approve" : "reject"} payment`;
       alertError(msg);
       setVerifyError(msg);
     } finally {
@@ -221,57 +347,207 @@ function PaymentsContent() {
           </div>
 
           <form onSubmit={handleSubmitPayment} className="px-6 py-5 space-y-4">
-            {/* Installment */}
+            {/* Reference Type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Installment <span className="text-red-500">*</span>
+                Reference Type <span className="text-red-500">*</span>
               </label>
-              {installments.length > 0 ? (
-                <select
-                  value={installmentId}
-                  onChange={(e) => setInstallmentId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
-                >
-                  <option value="">Select installment…</option>
-                  {installments.map((inst) => (
-                    <option key={inst.id} value={inst.id}>
-                      #{inst.installmentNumber} — Due{" "}
-                      {formatDate(inst.dueDate)} —{" "}
-                      {formatPrice(inst.amountDue - inst.amountPaid)} remaining
-                      {inst.status === "overdue" ? " ⚠ overdue" : ""}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  placeholder="Enter installment ID"
-                  value={installmentId}
-                  onChange={(e) => setInstallmentId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                />
-              )}
-              {selectedInstallment && (
-                <p className="mt-1.5 text-xs text-gray-500">
-                  Balance:{" "}
-                  <span className="font-medium text-red-600">
-                    {formatPrice(
-                      selectedInstallment.amountDue -
-                        selectedInstallment.amountPaid
-                    )}
-                  </span>{" "}
-                  &middot; Status:{" "}
-                  <span
-                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-                      STATUS_STYLES[selectedInstallment.status] ??
-                      "bg-gray-100 text-gray-500"
+              <div className="flex gap-2">
+                {(["installment", "contract", "sale"] as ReferenceType[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => { setRefType(t); setSubmitError(null); }}
+                    className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium border transition-colors ${
+                      refType === t
+                        ? "bg-primary-600 text-white border-primary-600"
+                        : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                     }`}
                   >
-                    {selectedInstallment.status}
-                  </span>
-                </p>
-              )}
+                    {t === "installment" ? "Installment" : t === "contract" ? "Contract" : "Sale / PO"}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* ── Installment reference ── */}
+            {refType === "installment" && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Installment <span className="text-red-500">*</span>
+                </label>
+                {installments.length > 0 ? (
+                  <select
+                    value={installmentId}
+                    onChange={(e) => setInstallmentId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+                  >
+                    <option value="">Select installment…</option>
+                    {installments.map((inst) => (
+                      <option key={inst.id} value={inst.id}>
+                        #{inst.installmentNumber} — Due{" "}
+                        {formatDate(inst.dueDate)} —{" "}
+                        {formatPrice(inst.amountDue - inst.amountPaid)} remaining
+                        {inst.status === "overdue" ? " ⚠ overdue" : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="Enter installment ID"
+                    value={installmentId}
+                    onChange={(e) => setInstallmentId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                )}
+                {selectedInstallment && (
+                  <p className="mt-1.5 text-xs text-gray-500">
+                    Balance:{" "}
+                    <span className="font-medium text-red-600">
+                      {formatPrice(
+                        selectedInstallment.amountDue - selectedInstallment.amountPaid
+                      )}
+                    </span>{" "}
+                    &middot; Status:{" "}
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                        STATUS_STYLES[selectedInstallment.status] ?? "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {selectedInstallment.status}
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* ── Contract reference ── */}
+            {refType === "contract" && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contract Number <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. CTR-202601-001"
+                      value={contractSearch}
+                      onChange={(e) => setContractSearch(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleContractSearch())}
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleContractSearch}
+                      disabled={contractSearchLoading}
+                      className="px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-50 transition-colors"
+                    >
+                      {contractSearchLoading ? "…" : "Search"}
+                    </button>
+                  </div>
+                </div>
+
+                {foundContract && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                    <span className="font-semibold">{foundContract.contractNumber}</span>
+                    {" · "}Total: {formatPrice(foundContract.totalAmount)}
+                    {" · "}Status: {foundContract.status}
+                  </div>
+                )}
+
+                {contractInstallments.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Installment (oldest unpaid pre-selected)
+                    </label>
+                    <select
+                      value={contractInstallmentId}
+                      onChange={(e) => setContractInstallmentId(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+                    >
+                      {contractInstallments.map((inst) => (
+                        <option key={inst.id} value={inst.id}>
+                          #{inst.installmentNumber} — Due {formatDate(inst.dueDate)} —{" "}
+                          {formatPrice(inst.amountDue - inst.amountPaid)} remaining
+                          {inst.status === "overdue" ? " ⚠ overdue" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {foundContract && contractInstallments.length === 0 && !contractSearchLoading && (
+                  <p className="text-xs text-gray-500">No open installments for this contract.</p>
+                )}
+              </div>
+            )}
+
+            {/* ── Sale / PO reference ── */}
+            {refType === "sale" && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Sale ID / PO Reference <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Paste sale UUID…"
+                      value={saleSearch}
+                      onChange={(e) => setSaleSearch(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSaleSearch())}
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaleSearch}
+                      disabled={saleSearchLoading}
+                      className="px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-50 transition-colors"
+                    >
+                      {saleSearchLoading ? "…" : "Resolve"}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Resolves to the linked contract and its open installments.
+                  </p>
+                </div>
+
+                {saleContract && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                    Contract:{" "}
+                    <span className="font-semibold">{saleContract.contractNumber}</span>
+                    {" · "}Total: {formatPrice(saleContract.totalAmount)}
+                  </div>
+                )}
+
+                {saleContractInstallments.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Installment (oldest unpaid pre-selected)
+                    </label>
+                    <select
+                      value={saleInstallmentId}
+                      onChange={(e) => setSaleInstallmentId(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+                    >
+                      {saleContractInstallments.map((inst) => (
+                        <option key={inst.id} value={inst.id}>
+                          #{inst.installmentNumber} — Due {formatDate(inst.dueDate)} —{" "}
+                          {formatPrice(inst.amountDue - inst.amountPaid)} remaining
+                          {inst.status === "overdue" ? " ⚠ overdue" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {saleContract && saleContractInstallments.length === 0 && !saleSearchLoading && (
+                  <p className="text-xs text-gray-500">No open installments found via this sale.</p>
+                )}
+              </div>
+            )}
 
             {/* Amount */}
             <div>
@@ -302,10 +578,26 @@ function PaymentsContent() {
               />
             </div>
 
+            {/* Payment Channel */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Channel
+              </label>
+              <select
+                value={paymentChannel}
+                onChange={(e) => setPaymentChannel(e.target.value as "cash" | "bank_transfer" | "line")}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+              >
+                <option value="cash">Cash</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="line">LINE</option>
+              </select>
+            </div>
+
             {/* Slip Upload */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Slip Image (optional)
+                Slip Image{paymentChannel === "bank_transfer" ? <span className="text-red-500"> *</span> : " (optional)"}
               </label>
               <input
                 ref={fileInputRef}
@@ -395,56 +687,68 @@ function PaymentsContent() {
                 No payments pending verification.
               </div>
             ) : (
-              unverifiedPayments.map((payment) => (
-                <div key={payment.id} className="px-5 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900">
-                        {formatPrice(payment.amount)}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {formatDate(payment.paymentDate)}
-                        {payment.installment?.sale?.customer?.name && (
-                          <span className="ml-1.5 text-gray-400">
-                            &middot; {payment.installment.sale.customer.name}
-                          </span>
+              unverifiedPayments.map((payment) => {
+                // Resolve customer name from installment or contract
+                const customerName =
+                  payment.installment?.sale?.customer?.name ??
+                  payment.contract?.customer?.name;
+
+                return (
+                  <div key={payment.id} className="px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          {formatPrice(payment.amount)}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {formatDate(payment.paymentDate)}
+                          {customerName && (
+                            <span className="ml-1.5 text-gray-400">
+                              &middot; {customerName}
+                            </span>
+                          )}
+                        </p>
+                        {payment.contract?.contractNumber && (
+                          <p className="text-xs text-blue-600 mt-0.5">
+                            Contract: {payment.contract.contractNumber}
+                          </p>
                         )}
-                      </p>
-                      {payment.slipImageUrl && (
-                        <a
-                          href={payment.slipImageUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-block mt-2"
+                        {payment.slipImageUrl && (
+                          <a
+                            href={payment.slipImageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block mt-2"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={payment.slipImageUrl}
+                              alt="Slip"
+                              className="h-20 rounded border border-gray-200 object-contain hover:opacity-80 transition-opacity"
+                            />
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => handleVerify(payment.id, true)}
+                          disabled={verifyingId === payment.id}
+                          className="px-3 py-1.5 text-xs font-medium rounded-md bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors border border-green-200"
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={payment.slipImageUrl}
-                            alt="Slip"
-                            className="h-20 rounded border border-gray-200 object-contain hover:opacity-80 transition-opacity"
-                          />
-                        </a>
-                      )}
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        onClick={() => handleVerify(payment.id, true)}
-                        disabled={verifyingId === payment.id}
-                        className="px-3 py-1.5 text-xs font-medium rounded-md bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors border border-green-200"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => handleVerify(payment.id, false)}
-                        disabled={verifyingId === payment.id}
-                        className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors border border-red-200"
-                      >
-                        Reject
-                      </button>
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleVerify(payment.id, false)}
+                          disabled={verifyingId === payment.id}
+                          className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors border border-red-200"
+                        >
+                          Reject
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

@@ -2,7 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import type { CreatePaymentInput, VerifyPaymentInput, ListPaymentsQuery } from "./payments.schemas.js";
 
 export async function listPayments(query: ListPaymentsQuery) {
-  const { installment_id, contract_id, payment_channel, verified, page, limit } = query;
+  const { installment_id, contract_id, contract_number, sale_id, payment_channel, verified, page, limit } = query;
   const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};
@@ -12,6 +12,17 @@ export async function listPayments(query: ListPaymentsQuery) {
   }
   if (contract_id) {
     where.contractId = contract_id;
+  }
+  if (contract_number) {
+    where.contract = { contractNumber: { contains: contract_number, mode: "insensitive" } };
+  }
+  if (sale_id) {
+    // Match payments linked to a contract that includes this sale,
+    // OR payments linked to an installment that belongs to this sale directly.
+    where.OR = [
+      { contract: { contractSales: { some: { saleId: sale_id } } } },
+      { installment: { saleId: sale_id } },
+    ];
   }
   if (payment_channel) {
     where.paymentChannel = payment_channel;
@@ -33,10 +44,12 @@ export async function listPayments(query: ListPaymentsQuery) {
             },
           },
         },
+        contract: {
+          select: { id: true, contractNumber: true, customer: { select: { id: true, name: true } } },
+        },
         verifiedBy: { select: { id: true, name: true } },
       },
       orderBy: [
-        // LINE payments unverified first, then by date desc
         { paymentChannel: "desc" },
         { createdAt: "desc" },
       ],
@@ -48,12 +61,47 @@ export async function listPayments(query: ListPaymentsQuery) {
 }
 
 export async function recordPayment(input: CreatePaymentInput) {
-  const installment = await prisma.installment.findUnique({
-    where: { id: input.installment_id },
-  });
+  // Determine which installment to apply this payment to.
+  let targetInstallmentId: string;
 
-  if (!installment) {
-    throw Object.assign(new Error("Installment not found"), { statusCode: 404 });
+  if (input.installment_id) {
+    // Direct installment reference — existing path
+    const installment = await prisma.installment.findUnique({
+      where: { id: input.installment_id },
+    });
+    if (!installment) {
+      throw Object.assign(new Error("Installment not found"), { statusCode: 404 });
+    }
+    targetInstallmentId = installment.id;
+  } else if (input.contract_id) {
+    // Contract reference — find the oldest unpaid installment
+    const contract = await prisma.contract.findUnique({
+      where: { id: input.contract_id },
+    });
+    if (!contract) {
+      throw Object.assign(new Error("Contract not found"), { statusCode: 404 });
+    }
+
+    const oldestInstallment = await prisma.installment.findFirst({
+      where: {
+        contractId: input.contract_id,
+        status: { in: ["pending", "overdue", "partially_paid"] },
+      },
+      orderBy: { dueDate: "asc" },
+    });
+
+    if (!oldestInstallment) {
+      throw Object.assign(
+        new Error("No open installments found for this contract"),
+        { statusCode: 422 }
+      );
+    }
+    targetInstallmentId = oldestInstallment.id;
+  } else {
+    throw Object.assign(
+      new Error("Either installment_id or contract_id is required"),
+      { statusCode: 400 }
+    );
   }
 
   // bank_transfer requires a slip image
@@ -64,9 +112,14 @@ export async function recordPayment(input: CreatePaymentInput) {
     );
   }
 
+  const installment = await prisma.installment.findUnique({
+    where: { id: targetInstallmentId },
+  });
+
   const payment = await prisma.payment.create({
     data: {
-      installmentId: input.installment_id,
+      installmentId: targetInstallmentId,
+      contractId: input.contract_id ?? installment?.contractId ?? null,
       amount: input.amount,
       paymentDate: new Date(input.payment_date),
       paymentChannel: input.payment_channel ?? "cash",
@@ -77,16 +130,16 @@ export async function recordPayment(input: CreatePaymentInput) {
   });
 
   // Update installment amount paid
-  const totalPaid = Number(installment.amountPaid) + input.amount;
+  const totalPaid = Number(installment!.amountPaid) + input.amount;
   const newStatus =
-    totalPaid >= Number(installment.amountDue)
+    totalPaid >= Number(installment!.amountDue)
       ? "paid"
       : totalPaid > 0
         ? "partially_paid"
         : "pending";
 
   await prisma.installment.update({
-    where: { id: input.installment_id },
+    where: { id: targetInstallmentId },
     data: {
       amountPaid: totalPaid,
       status: newStatus,
@@ -122,7 +175,14 @@ export async function getPaymentDetail(id: string) {
     where: { id },
     include: {
       installment: {
-        include: { sale: true },
+        include: { sale: { include: { customer: true } } },
+      },
+      contract: {
+        select: {
+          id: true,
+          contractNumber: true,
+          customer: { select: { id: true, name: true } },
+        },
       },
       verifiedBy: { select: { id: true, name: true } },
     },
@@ -151,7 +211,6 @@ export async function createLinePayment(options: {
   });
 
   if (!customer) {
-    // No matching customer — nothing to auto-create
     return null;
   }
 
@@ -171,7 +230,7 @@ export async function createLinePayment(options: {
   const payment = await prisma.payment.create({
     data: {
       installmentId: installment.id,
-      amount: 0, // Amount unknown until staff verifies
+      amount: 0,
       paymentDate: new Date(),
       paymentChannel: "line",
       slipImageUrl: slipImageUrl ?? null,

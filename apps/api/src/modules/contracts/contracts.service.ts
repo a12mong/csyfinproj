@@ -117,13 +117,16 @@ async function generateInstallmentSchedule(
 }
 
 export async function listContracts(query: ListContractsQuery) {
-  const { customer_id, status, q, page, limit } = query;
+  const { customer_id, sale_id, status, q, page, limit } = query;
   const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};
 
   if (customer_id) {
     where.customerId = customer_id;
+  }
+  if (sale_id) {
+    where.contractSales = { some: { saleId: sale_id } };
   }
   if (status) {
     where.status = status;
