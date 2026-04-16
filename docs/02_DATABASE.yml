@@ -1,7 +1,8 @@
 database:
-  engine: PostgreSQL
+  engine: "MySQL 8"
   orm: Prisma
   schema_location: "apps/api/prisma/schema.prisma"
+  hosting: "DigitalOcean Managed MySQL"
 
 tables:
   users:

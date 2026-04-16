@@ -10,7 +10,7 @@ Yamaha motorcycle sales and finance management system. Built as a monorepo with 
 
 - Node.js >= 20.0.0
 - pnpm >= 9.x
-- PostgreSQL 15+
+- MySQL 8+ (or DigitalOcean Managed MySQL)
 
 ### Setup
 
@@ -35,7 +35,7 @@ pnpm dev
 ### Environment Variables
 
 **Backend (apps/api/.env)**
-- `DATABASE_URL` - PostgreSQL connection string
+- `DATABASE_URL` - MySQL connection string
 - `JWT_SECRET` - Secret for JWT signing
 - `PORT` - API server port (default: 4000)
 - `LINE_CHANNEL_ACCESS_TOKEN` - LINE Messaging API token

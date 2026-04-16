@@ -42,7 +42,7 @@ packages:
     framework: "Express.js"
     language: TypeScript
     orm: "Prisma"
-    database: PostgreSQL
+    database: "MySQL 8 (DigitalOcean Managed)"
     description: "REST API server"
     port: 4000
     modules:

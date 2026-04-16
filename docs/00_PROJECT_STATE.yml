@@ -96,6 +96,6 @@ roles:
 tech_stack:
   frontend: "Next.js 14 (App Router) + TypeScript + Tailwind CSS"
   backend: "Express.js + TypeScript"
-  database: "PostgreSQL + Prisma ORM"
+  database: "MySQL 8 (DigitalOcean Managed) + Prisma ORM"
   monorepo: "pnpm workspaces + Turborepo"
   runtime: "Node.js 20+"
