@@ -14,7 +14,6 @@ import type {
   Sale,
   SaleWithInstallments,
   PaginatedResponse,
-  FinancialInstitution,
 } from "@csyfinproj/shared";
 
 const STATUS_OPTIONS = [
@@ -50,9 +49,26 @@ function formatDate(dateStr: string) {
   });
 }
 
+// ─── Customer type badge ──────────────────────────────────────────────────────
+
+const CUSTOMER_TYPE_BADGE: Record<string, { label: string; className: string }> = {
+  personal: { label: "Personal", className: "bg-blue-50 text-blue-700" },
+  individual: { label: "Individual", className: "bg-green-50 text-green-700" },
+  finance: { label: "Finance", className: "bg-amber-50 text-amber-700" },
+};
+
+function CustomerTypeBadge({ type }: { type: string }) {
+  const style = CUSTOMER_TYPE_BADGE[type] ?? { label: type, className: "bg-gray-100 text-gray-600" };
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${style.className}`}>
+      {style.label}
+    </span>
+  );
+}
+
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
-const STEPS = ["Customer", "Motorcycle", "Pricing", "Add-ons", "Confirm"];
+const STEPS = ["Invoice Customer", "Motorcycle", "Pricing", "Add-ons", "Confirm"];
 
 function StepIndicator({ current }: { current: number }) {
   return (
@@ -126,7 +142,8 @@ function StepCustomer({
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">Select Customer</h3>
+      <h3 className="text-sm font-semibold text-gray-900 mb-0.5">Select Invoice Customer</h3>
+      <p className="text-xs text-gray-500 mb-3">The customer who will receive the invoice.</p>
       <input
         type="text"
         placeholder="Search by name, phone, or ID card…"
@@ -153,10 +170,15 @@ function StepCustomer({
                   : "border-gray-200 hover:border-primary-300 hover:bg-gray-50"
               }`}
             >
-              <p className="text-sm font-medium text-gray-900">{c.name}</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {c.phone} · {c.idCardNumber}
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{c.name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {c.phone} · {c.idCardNumber}
+                  </p>
+                </div>
+                {c.type && <CustomerTypeBadge type={c.type} />}
+              </div>
             </button>
           ))
         )}
@@ -249,18 +271,17 @@ function StepMotorcycle({
 
 // ─── Step 3 — Pricing ─────────────────────────────────────────────────────────
 
-type PaymentMethod = "cash" | "installment" | "finance_company";
+type PaymentMethod = "cash" | "installment";
 
 interface PricingForm {
   payment_method: PaymentMethod;
   total_price: string;
   down_payment: string;
-  financial_institution_id: string;
-  finance_reference_number: string;
   notes: string;
 }
 
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+// Display labels — includes finance_company for backward-compat display in table
+const PAYMENT_METHOD_DISPLAY: Record<string, string> = {
   cash: "Cash",
   installment: "Installment",
   finance_company: "Finance Company",
@@ -271,36 +292,90 @@ function StepPricing({
   form,
   onChange,
   errors,
+  invoiceCustomer,
+  buyerCustomer,
+  onBuyerCustomerChange,
+  buyerCustomerError,
 }: {
   motorcycle: Motorcycle;
   form: PricingForm;
   onChange: (f: PricingForm) => void;
   errors: Partial<PricingForm>;
+  invoiceCustomer: Customer | null;
+  buyerCustomer: Customer | null;
+  onBuyerCustomerChange: (c: Customer | null) => void;
+  buyerCustomerError?: string | null;
 }) {
-  const [financialInstitutions, setFinancialInstitutions] = useState<FinancialInstitution[]>([]);
+  const [buyerSearch, setBuyerSearch] = useState("");
+  const [buyerCandidates, setBuyerCandidates] = useState<Customer[]>([]);
+  const [buyerLoading, setBuyerLoading] = useState(false);
 
   const set = (field: keyof PricingForm, value: string) =>
     onChange({ ...form, [field]: value });
 
   const isCash = form.payment_method === "cash";
-  const isFinanceCompany = form.payment_method === "finance_company";
+  const requiresBuyer = isCash && invoiceCustomer?.type === "finance";
   const totalPrice = parseFloat(form.total_price) || 0;
   const downPayment = parseFloat(form.down_payment) || 0;
   const financeAmount = Math.max(0, totalPrice - downPayment);
 
-  // Fetch financial institutions when finance_company is selected
+  const fetchBuyerCandidates = useCallback(async (q: string) => {
+    setBuyerLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "50" });
+      if (q) params.set("search", q);
+      const res = await apiFetch<PaginatedResponse<Customer>>(`/customers?${params}`);
+      // Filter to personal/individual only — exclude finance companies
+      setBuyerCandidates(
+        res.data.filter((c) => c.type === "personal" || c.type === "individual" || !c.type)
+      );
+    } catch {
+      setBuyerCandidates([]);
+    } finally {
+      setBuyerLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (!isFinanceCompany) return;
-    apiFetch<{ data: FinancialInstitution[] }>("/financial-institutions?active=true")
-      .then((res) => setFinancialInstitutions(res.data))
-      .catch(() => setFinancialInstitutions([]));
-  }, [isFinanceCompany]);
+    if (!requiresBuyer) return;
+    fetchBuyerCandidates(buyerSearch);
+  }, [buyerSearch, requiresBuyer, fetchBuyerCandidates]);
+
+  // Clear buyer customer when switching away from cash or invoice customer changes
+  useEffect(() => {
+    if (!requiresBuyer) {
+      onBuyerCustomerChange(null);
+    }
+  }, [requiresBuyer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-gray-900">Configure Pricing</h3>
 
-      {/* Cash auto-complete notice */}
+      {/* Payment Method */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          Payment Method
+        </label>
+        <div className="flex gap-2">
+          {(["cash", "installment"] as PaymentMethod[]).map((method) => (
+            <button
+              key={method}
+              type="button"
+              onClick={() => set("payment_method", method)}
+              className={`flex-1 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                form.payment_method === method
+                  ? "border-primary-500 bg-primary-50 text-primary-700"
+                  : "border-gray-200 text-gray-600 hover:border-gray-300"
+              }`}
+            >
+              {PAYMENT_METHOD_DISPLAY[method]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Cash notice */}
       {isCash && (
         <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2.5">
           <span className="text-green-600 text-sm">✓</span>
@@ -310,28 +385,73 @@ function StepPricing({
         </div>
       )}
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Payment Method
-        </label>
-        <div className="flex gap-2 flex-wrap">
-          {(["cash", "installment", "finance_company"] as PaymentMethod[]).map((method) => (
-            <button
-              key={method}
-              type="button"
-              onClick={() => set("payment_method", method)}
-              className={`flex-1 min-w-[100px] py-2 rounded-lg border text-sm font-medium transition-colors ${
-                form.payment_method === method
-                  ? "border-primary-500 bg-primary-50 text-primary-700"
-                  : "border-gray-200 text-gray-600 hover:border-gray-300"
-              }`}
-            >
-              {PAYMENT_METHOD_LABELS[method]}
-            </button>
-          ))}
+      {/* Installment notice */}
+      {!isCash && (
+        <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
+          <span className="text-blue-500 text-base leading-none">ℹ</span>
+          <p className="text-sm text-blue-700">
+            Installment sales create contracts with the store (CSY).
+          </p>
         </div>
-      </div>
+      )}
 
+      {/* Buyer Customer — shown only when invoice customer is a finance company */}
+      {requiresBuyer && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <div>
+            <p className="text-sm font-medium text-amber-800">
+              Buyer Customer <span className="text-red-500">*</span>
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              The invoice customer is a finance company. Select the actual buyer (personal or individual).
+            </p>
+          </div>
+          <input
+            type="text"
+            placeholder="Search buyer by name, phone, or ID card…"
+            value={buyerSearch}
+            onChange={(e) => setBuyerSearch(e.target.value)}
+            className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          />
+          <div className="space-y-1.5 max-h-44 overflow-y-auto">
+            {buyerLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-12 bg-amber-100 rounded-lg animate-pulse" />
+              ))
+            ) : buyerCandidates.length === 0 ? (
+              <p className="text-sm text-amber-700 py-3 text-center">
+                No personal / individual customers found.
+              </p>
+            ) : (
+              buyerCandidates.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onBuyerCustomerChange(c)}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors bg-white ${
+                    buyerCustomer?.id === c.id
+                      ? "border-primary-500 bg-primary-50"
+                      : "border-amber-200 hover:border-primary-300 hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{c.name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{c.phone}</p>
+                    </div>
+                    {c.type && <CustomerTypeBadge type={c.type} />}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+          {buyerCustomerError && (
+            <p className="text-xs text-red-600">{buyerCustomerError}</p>
+          )}
+        </div>
+      )}
+
+      {/* Price fields */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -367,67 +487,8 @@ function StepPricing({
         </div>
       </div>
 
-      {/* Finance company fields */}
-      {isFinanceCompany && (
-        <>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Financial Institution <span className="text-red-500">*</span>
-            </label>
-            {financialInstitutions.length > 0 ? (
-              <select
-                value={form.financial_institution_id}
-                onChange={(e) => set("financial_institution_id", e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
-              >
-                <option value="">Select financial institution…</option>
-                {financialInstitutions.map((fi) => (
-                  <option key={fi.id} value={fi.id}>
-                    {fi.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={form.financial_institution_id}
-                onChange={(e) => set("financial_institution_id", e.target.value)}
-                placeholder="Financial institution name"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-              />
-            )}
-            {errors.financial_institution_id && (
-              <p className="mt-1 text-xs text-red-600">{errors.financial_institution_id}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Finance Reference Number
-            </label>
-            <input
-              type="text"
-              value={form.finance_reference_number}
-              onChange={(e) => set("finance_reference_number", e.target.value)}
-              placeholder="Optional reference number"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            />
-          </div>
-          {financeAmount > 0 && (
-            <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm">
-              <div className="flex justify-between text-blue-700">
-                <span>Finance amount</span>
-                <span className="font-semibold">{formatPrice(financeAmount)}</span>
-              </div>
-              <p className="text-xs text-blue-500 mt-1">
-                Installment terms will be set when linking this sale to a contract.
-              </p>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Installment — no terms at sale level, managed via contract */}
-      {form.payment_method === "installment" && financeAmount > 0 && (
+      {/* Finance amount for installment */}
+      {!isCash && financeAmount > 0 && (
         <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm">
           <div className="flex justify-between text-gray-700">
             <span>Finance amount</span>
@@ -541,31 +602,26 @@ function StepAddons({
 // ─── Step 5 — Confirm ─────────────────────────────────────────────────────────
 
 function StepConfirm({
-  customer,
+  invoiceCustomer,
+  buyerCustomer,
   motorcycle,
   pricing,
   addonIds,
-  financialInstitutions,
 }: {
-  customer: Customer;
+  invoiceCustomer: Customer;
+  buyerCustomer: Customer | null;
   motorcycle: Motorcycle;
   pricing: PricingForm;
   addonIds: string[];
-  financialInstitutions: FinancialInstitution[];
 }) {
   const totalPrice = parseFloat(pricing.total_price) || 0;
   const downPayment = parseFloat(pricing.down_payment) || 0;
   const financeAmount = Math.max(0, totalPrice - downPayment);
 
-  const selectedFI = financialInstitutions.find(
-    (fi) => fi.id === pricing.financial_institution_id
-  );
-
   return (
     <div>
       <h3 className="text-sm font-semibold text-gray-900 mb-3">Confirm Sale</h3>
 
-      {/* Cash auto-complete notice */}
       {pricing.payment_method === "cash" && (
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2.5">
           <span className="text-green-600 text-sm">✓</span>
@@ -576,11 +632,29 @@ function StepConfirm({
       )}
 
       <div className="bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-200">
+        {/* Invoice Customer */}
         <div className="px-4 py-3">
-          <p className="text-xs text-gray-500 mb-0.5">Customer</p>
-          <p className="text-sm font-medium text-gray-900">{customer.name}</p>
-          <p className="text-xs text-gray-500">{customer.phone}</p>
+          <p className="text-xs text-gray-500 mb-1">Invoice Customer</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-gray-900">{invoiceCustomer.name}</p>
+            {invoiceCustomer.type && <CustomerTypeBadge type={invoiceCustomer.type} />}
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">{invoiceCustomer.phone}</p>
         </div>
+
+        {/* Buyer Customer (only shown when applicable) */}
+        {buyerCustomer && (
+          <div className="px-4 py-3">
+            <p className="text-xs text-gray-500 mb-1">Buyer Customer</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-gray-900">{buyerCustomer.name}</p>
+              {buyerCustomer.type && <CustomerTypeBadge type={buyerCustomer.type} />}
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">{buyerCustomer.phone}</p>
+          </div>
+        )}
+
+        {/* Motorcycle */}
         <div className="px-4 py-3">
           <p className="text-xs text-gray-500 mb-0.5">Motorcycle</p>
           <p className="text-sm font-medium text-gray-900">
@@ -590,10 +664,12 @@ function StepConfirm({
             {motorcycle.color} · {motorcycle.chassisNumber}
           </p>
         </div>
+
+        {/* Pricing summary */}
         <div className="px-4 py-3 space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-500">Payment method</span>
-            <span className="font-medium">{PAYMENT_METHOD_LABELS[pricing.payment_method]}</span>
+            <span className="font-medium">{PAYMENT_METHOD_DISPLAY[pricing.payment_method]}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Total price</span>
@@ -608,27 +684,6 @@ function StepConfirm({
               <span className="text-gray-500">Finance amount</span>
               <span className="font-medium">{formatPrice(financeAmount)}</span>
             </div>
-          )}
-          {pricing.payment_method === "finance_company" && (
-            <>
-              {selectedFI ? (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Financial institution</span>
-                  <span className="font-medium">{selectedFI.name}</span>
-                </div>
-              ) : pricing.financial_institution_id ? (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Financial institution</span>
-                  <span className="font-medium">{pricing.financial_institution_id}</span>
-                </div>
-              ) : null}
-              {pricing.finance_reference_number && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Reference #</span>
-                  <span className="font-medium">{pricing.finance_reference_number}</span>
-                </div>
-              )}
-            </>
           )}
           {addonIds.length > 0 && (
             <div className="flex justify-between">
@@ -651,11 +706,9 @@ function StepConfirm({
 // ─── New Sale Modal Form ──────────────────────────────────────────────────────
 
 const INITIAL_PRICING: PricingForm = {
-  payment_method: "finance_company",
+  payment_method: "cash",
   total_price: "",
   down_payment: "",
-  financial_institution_id: "",
-  finance_reference_number: "",
   notes: "",
 };
 
@@ -667,15 +720,15 @@ interface NewSaleFormProps {
 
 function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormProps) {
   const [step, setStep] = useState(1);
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null); // invoice customer
+  const [buyerCustomer, setBuyerCustomer] = useState<Customer | null>(null);
   const [motorcycle, setMotorcycle] = useState<Motorcycle | null>(null);
   const [pricing, setPricing] = useState<PricingForm>(INITIAL_PRICING);
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [pricingErrors, setPricingErrors] = useState<Partial<PricingForm>>({});
+  const [buyerCustomerError, setBuyerCustomerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  // Cache financial institutions fetched during StepPricing for use in StepConfirm
-  const [financialInstitutions, setFinancialInstitutions] = useState<FinancialInstitution[]>([]);
 
   // Pre-fill customer when navigated from customer detail page
   useEffect(() => {
@@ -688,13 +741,6 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
         .catch(() => {});
     }
   }, [prefilledCustomerId, customer]);
-
-  // Fetch financial institutions for the confirm step display
-  useEffect(() => {
-    apiFetch<{ data: FinancialInstitution[] }>("/financial-institutions?active=true")
-      .then((res) => setFinancialInstitutions(res.data))
-      .catch(() => setFinancialInstitutions([]));
-  }, []);
 
   function toggleAddon(id: string) {
     setAddonIds((prev) =>
@@ -712,13 +758,16 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     if (pricing.down_payment !== "" && (isNaN(downPayment) || downPayment < 0)) {
       errors.down_payment = "Enter a valid down payment";
     }
-    if (
-      pricing.payment_method === "finance_company" &&
-      !pricing.financial_institution_id.trim()
-    ) {
-      errors.financial_institution_id = "Select or enter a financial institution";
-    }
     setPricingErrors(errors);
+
+    // Buyer customer required when invoice customer is a finance company paying cash
+    const requiresBuyer = pricing.payment_method === "cash" && customer?.type === "finance";
+    if (requiresBuyer && !buyerCustomer) {
+      setBuyerCustomerError("Select the actual buyer customer for this finance company invoice");
+      return false;
+    }
+    setBuyerCustomerError(null);
+
     return Object.keys(errors).length === 0;
   }
 
@@ -733,28 +782,16 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     setSubmitting(true);
     setSubmitError(null);
 
-    // Resolve FI name from dropdown if applicable
-    const selectedFI = financialInstitutions.find(
-      (fi) => fi.id === pricing.financial_institution_id
-    );
-
     try {
       const body: Record<string, unknown> = {
-        customer_id: customer.id,
+        invoice_customer_id: customer.id,
         motorcycle_id: motorcycle.id,
         total_price: parseFloat(pricing.total_price),
         down_payment: parseFloat(pricing.down_payment) || 0,
         payment_method: pricing.payment_method,
       };
-      if (pricing.payment_method === "finance_company") {
-        // Send name for current backend compatibility; ID for when backend supports it
-        body.finance_company_name = selectedFI?.name ?? pricing.financial_institution_id;
-        if (selectedFI) {
-          body.financial_institution_id = selectedFI.id;
-        }
-        if (pricing.finance_reference_number.trim()) {
-          body.finance_reference_number = pricing.finance_reference_number.trim();
-        }
+      if (buyerCustomer) {
+        body.buyer_customer_id = buyerCustomer.id;
       }
       if (addonIds.length > 0) body.addon_ids = addonIds;
       if (pricing.notes.trim()) body.notes = pricing.notes.trim();
@@ -773,10 +810,11 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     }
   }
 
+  const requiresBuyerCustomer = pricing.payment_method === "cash" && customer?.type === "finance";
   const canAdvance =
     (step === 1 && customer !== null) ||
     (step === 2 && motorcycle !== null) ||
-    step === 3 ||
+    (step === 3 && (!requiresBuyerCustomer || buyerCustomer !== null)) ||
     step === 4;
 
   return (
@@ -791,16 +829,20 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
           form={pricing}
           onChange={setPricing}
           errors={pricingErrors}
+          invoiceCustomer={customer}
+          buyerCustomer={buyerCustomer}
+          onBuyerCustomerChange={setBuyerCustomer}
+          buyerCustomerError={buyerCustomerError}
         />
       )}
       {step === 4 && <StepAddons selected={addonIds} onToggle={toggleAddon} />}
       {step === 5 && customer && motorcycle && (
         <StepConfirm
-          customer={customer}
+          invoiceCustomer={customer}
+          buyerCustomer={buyerCustomer}
           motorcycle={motorcycle}
           pricing={pricing}
           addonIds={addonIds}
-          financialInstitutions={financialInstitutions}
         />
       )}
 
@@ -995,7 +1037,7 @@ function SalesPageInner() {
                     >
                       <td className="px-5 py-3 text-gray-600">{formatDate(sale.saleDate)}</td>
                       <td className="px-5 py-3 text-gray-600">
-                        {PAYMENT_METHOD_LABELS[sale.paymentMethod as PaymentMethod] ?? sale.paymentMethod}
+                        {PAYMENT_METHOD_DISPLAY[sale.paymentMethod] ?? sale.paymentMethod}
                       </td>
                       <td className="px-5 py-3 text-right font-medium text-gray-900">
                         {formatPrice(sale.totalPrice)}

@@ -14,6 +14,7 @@ export interface Customer {
   lineId?: string;
   address?: string;
   idCardNumber: string;
+  type?: "personal" | "individual" | "finance";
 }
 
 export interface CustomerWithDebtSummary extends Customer {
@@ -49,6 +50,8 @@ export interface FinancialInstitution {
 export interface Sale {
   id: string;
   customerId: string;
+  invoiceCustomerId?: string;
+  buyerCustomerId?: string | null;
   motorcycleId: string;
   saleDate: string;
   totalPrice: number;
@@ -66,6 +69,8 @@ export interface Sale {
 
 export interface SaleWithInstallments extends Sale {
   customer: Customer;
+  invoiceCustomer?: Customer;
+  buyerCustomer?: Customer | null;
   motorcycle: Motorcycle;
   installments: Installment[];
   addons: Addon[];
