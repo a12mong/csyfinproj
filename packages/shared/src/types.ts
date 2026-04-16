@@ -3,6 +3,7 @@ export interface User {
   email: string;
   name: string;
   role: "admin" | "staff" | "viewer";
+  active: boolean;
 }
 
 export interface Customer {
@@ -32,6 +33,7 @@ export interface Motorcycle {
   costPrice: number;
   sellingPrice: number;
   status: "in_stock" | "reserved" | "sold";
+  deliveryNoteItemId?: string;
 }
 
 export interface Sale {
@@ -44,7 +46,9 @@ export interface Sale {
   financeAmount: number;
   numInstallments: number;
   interestRate: number;
-  paymentMethod: "cash" | "installment";
+  paymentMethod: "cash" | "installment" | "finance_company";
+  financeCompanyName?: string;
+  financeReferenceNumber?: string;
   status: "active" | "completed" | "defaulted" | "cancelled";
   notes?: string;
 }
@@ -75,8 +79,34 @@ export interface Payment {
   installmentId: string;
   amount: number;
   paymentDate: string;
+  paymentChannel: "cash" | "bank_transfer" | "line";
   slipImageUrl?: string;
   verified: boolean;
+  lineMessageId?: string;
+}
+
+export interface DeliveryNote {
+  id: string;
+  noteNumber: string;
+  supplierName: string;
+  receivedDate: string;
+  receivedByUserId: string;
+  notes?: string;
+  status: "pending" | "verified" | "cancelled";
+}
+
+export interface DeliveryNoteWithItems extends DeliveryNote {
+  items: DeliveryNoteItem[];
+  receivedBy: User;
+}
+
+export interface DeliveryNoteItem {
+  id: string;
+  deliveryNoteId: string;
+  itemType: "motorcycle" | "part" | "accessory";
+  description: string;
+  quantity: number;
+  unitCost: number;
 }
 
 export interface Addon {
