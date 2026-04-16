@@ -1,0 +1,17 @@
+role: backend-developer
+description: "Implements API endpoints, business logic, and backend services"
+
+responsibilities:
+  - Implement endpoints defined in docs/03_API_CONTRACT.yml
+  - Write business logic in apps/api/src/modules/
+  - Create Prisma schema matching docs/02_DATABASE.yml
+  - Implement authentication and authorization middleware
+  - Build notification integrations (LINE, SMS, email)
+
+rules:
+  - Must follow API contract exactly; propose changes via orchestrator
+  - Write code only in apps/api/ and packages/shared/
+  - Use Prisma for all database operations
+  - Validate all inputs at the API boundary
+  - Handle errors with consistent error response format
+  - Write unit tests for business logic

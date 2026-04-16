@@ -1,0 +1,94 @@
+system:
+  name: CSYFinproj
+  type: monorepo
+  description: "Yamaha motorcycle sales & finance management platform"
+
+architecture:
+  style: "Modular monolith (monorepo with clear package boundaries)"
+  deployment: "Single server / VPS initially, containerized for scale"
+
+packages:
+  apps/web:
+    type: frontend
+    framework: "Next.js 14 (App Router)"
+    language: TypeScript
+    styling: "Tailwind CSS"
+    description: "Customer-facing and admin web application"
+    port: 3000
+    pages:
+      - path: "/"
+        description: "Dashboard / home"
+      - path: "/inventory"
+        description: "Motorcycle inventory listing"
+      - path: "/inventory/[id]"
+        description: "Motorcycle detail page"
+      - path: "/sales"
+        description: "Sales management"
+      - path: "/sales/new"
+        description: "New sale form"
+      - path: "/customers"
+        description: "Customer listing"
+      - path: "/customers/[id]"
+        description: "Customer detail with debt info"
+      - path: "/finance"
+        description: "Finance/installment overview"
+      - path: "/finance/[customerId]"
+        description: "Individual customer installments"
+      - path: "/payments"
+        description: "Payment collection and slip verification"
+
+  apps/api:
+    type: backend
+    framework: "Express.js"
+    language: TypeScript
+    orm: "Prisma"
+    database: PostgreSQL
+    description: "REST API server"
+    port: 4000
+    modules:
+      - name: auth
+        description: "Authentication and authorization"
+      - name: inventory
+        description: "Motorcycle inventory management"
+      - name: sales
+        description: "Sales transactions"
+      - name: customers
+        description: "Customer management"
+      - name: finance
+        description: "Installment and debt tracking"
+      - name: payments
+        description: "Payment collection and verification"
+      - name: notifications
+        description: "LINE / SMS / email reminders"
+      - name: addons
+        description: "Add-on services"
+
+  packages/shared:
+    type: library
+    language: TypeScript
+    description: "Shared types, constants, and utilities"
+    exports:
+      - types
+      - constants
+      - validators
+
+integrations:
+  line_messaging_api:
+    purpose: "Payment reminders via LINE"
+    phase: 1
+  sms_gateway:
+    purpose: "Payment reminders via SMS"
+    phase: 1
+  email_smtp:
+    purpose: "Payment reminders via email"
+    phase: 1
+  file_storage:
+    purpose: "Payment slip image uploads"
+    type: "Local disk / S3-compatible"
+    phase: 1
+
+security:
+  authentication: "JWT-based session tokens"
+  authorization: "Role-based (admin, staff, viewer)"
+  data_protection: "Encrypt sensitive customer data at rest"
+  file_upload: "Validate MIME types, limit file size"

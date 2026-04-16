@@ -1,0 +1,17 @@
+role: frontend-developer
+description: "Implements UI pages and components using Next.js"
+
+responsibilities:
+  - Build pages defined in docs/01_ARCHITECTURE.yml
+  - Consume API endpoints from docs/03_API_CONTRACT.yml
+  - Create reusable UI components with Tailwind CSS
+  - Handle form validation and user feedback
+  - Implement responsive design
+
+rules:
+  - Must wait for API contract (03_API_CONTRACT.yml) before starting
+  - Write code only in apps/web/ and packages/shared/
+  - Use Next.js App Router conventions
+  - Use TypeScript strict mode
+  - All API calls go through a centralized API client
+  - Handle loading, error, and empty states in all views

@@ -1,0 +1,101 @@
+project:
+  name: CSYFinproj
+  description: "Yamaha motorcycle sales and finance management system"
+  version: "0.1.0"
+  status: bootstrapping
+  current_phase: 1
+
+phases:
+  phase_1:
+    name: "Core Sales & Finance"
+    status: not_started
+    target_date: "2026-04-19"
+    features:
+      - id: F001
+        name: "Motorcycle Buy/Sell"
+        description: "Purchase and sell motorcycles (inventory in/out)"
+        status: not_started
+        kickback_count: 0
+        tasks:
+          - id: T001
+            name: "Inventory management CRUD"
+            assigned_to: backend-developer
+            status: not_started
+            kickback_count: 0
+          - id: T002
+            name: "Motorcycle listing UI"
+            assigned_to: frontend-developer
+            status: not_started
+            kickback_count: 0
+      - id: F002
+        name: "Customer Debt Management"
+        description: "Installment tracking, payment reminders, collection"
+        status: not_started
+        kickback_count: 0
+        tasks:
+          - id: T003
+            name: "Installment schedule table and tracking"
+            assigned_to: backend-developer
+            status: not_started
+            kickback_count: 0
+          - id: T004
+            name: "Debt tracking dashboard UI"
+            assigned_to: frontend-developer
+            status: not_started
+            kickback_count: 0
+          - id: T005
+            name: "Payment reminder system (LINE/SMS/email)"
+            assigned_to: backend-developer
+            status: not_started
+            kickback_count: 0
+          - id: T006
+            name: "Payment collection with slip upload"
+            assigned_to: backend-developer
+            status: not_started
+            kickback_count: 0
+      - id: F003
+        name: "Add-on Services"
+        description: "Optional add-on services for motorcycle sales"
+        status: not_started
+        kickback_count: 0
+        tasks:
+          - id: T007
+            name: "Add-on service catalog and pricing"
+            assigned_to: backend-developer
+            status: not_started
+            kickback_count: 0
+  phase_2:
+    name: "Parts & Repair"
+    status: not_started
+    features:
+      - id: F004
+        name: "Parts Buy/Sell"
+        description: "Buy and sell motorcycle parts"
+        status: not_started
+        kickback_count: 0
+      - id: F005
+        name: "Motorcycle Repair System"
+        description: "Repair service tracking and management"
+        status: not_started
+        kickback_count: 0
+
+roles:
+  orchestrator:
+    status: active
+  system-designer:
+    status: active
+  database-designer:
+    status: active
+  backend-developer:
+    status: pending
+  frontend-developer:
+    status: pending
+  qa-tester:
+    status: pending
+
+tech_stack:
+  frontend: "Next.js 14 (App Router) + TypeScript + Tailwind CSS"
+  backend: "Express.js + TypeScript"
+  database: "PostgreSQL + Prisma ORM"
+  monorepo: "pnpm workspaces + Turborepo"
+  runtime: "Node.js 20+"

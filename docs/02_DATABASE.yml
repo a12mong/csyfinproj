@@ -1,0 +1,263 @@
+database:
+  engine: PostgreSQL
+  orm: Prisma
+  schema_location: "apps/api/prisma/schema.prisma"
+
+tables:
+  users:
+    description: "System users (admin, staff)"
+    columns:
+      - name: id
+        type: uuid
+        primary: true
+        default: gen_random_uuid()
+      - name: email
+        type: varchar(255)
+        unique: true
+      - name: password_hash
+        type: varchar(255)
+      - name: name
+        type: varchar(255)
+      - name: role
+        type: enum(admin, staff, viewer)
+        default: staff
+      - name: created_at
+        type: timestamp
+        default: now()
+      - name: updated_at
+        type: timestamp
+
+  customers:
+    description: "Customer records"
+    columns:
+      - name: id
+        type: uuid
+        primary: true
+      - name: name
+        type: varchar(255)
+      - name: phone
+        type: varchar(20)
+      - name: email
+        type: varchar(255)
+        nullable: true
+      - name: line_id
+        type: varchar(100)
+        nullable: true
+      - name: address
+        type: text
+        nullable: true
+      - name: id_card_number
+        type: varchar(13)
+        unique: true
+      - name: created_at
+        type: timestamp
+      - name: updated_at
+        type: timestamp
+
+  motorcycles:
+    description: "Motorcycle inventory"
+    columns:
+      - name: id
+        type: uuid
+        primary: true
+      - name: brand
+        type: varchar(100)
+        default: "Yamaha"
+      - name: model
+        type: varchar(255)
+      - name: year
+        type: integer
+      - name: chassis_number
+        type: varchar(100)
+        unique: true
+      - name: engine_number
+        type: varchar(100)
+        unique: true
+      - name: color
+        type: varchar(50)
+      - name: cost_price
+        type: decimal(12,2)
+      - name: selling_price
+        type: decimal(12,2)
+      - name: status
+        type: enum(in_stock, reserved, sold)
+        default: in_stock
+      - name: created_at
+        type: timestamp
+      - name: updated_at
+        type: timestamp
+
+  sales:
+    description: "Sales transactions"
+    columns:
+      - name: id
+        type: uuid
+        primary: true
+      - name: customer_id
+        type: uuid
+        references: customers.id
+      - name: motorcycle_id
+        type: uuid
+        references: motorcycles.id
+      - name: sale_date
+        type: date
+      - name: total_price
+        type: decimal(12,2)
+      - name: down_payment
+        type: decimal(12,2)
+      - name: finance_amount
+        type: decimal(12,2)
+        description: "total_price - down_payment"
+      - name: num_installments
+        type: integer
+      - name: interest_rate
+        type: decimal(5,2)
+        description: "Annual interest rate percentage"
+      - name: payment_method
+        type: enum(cash, installment)
+      - name: status
+        type: enum(active, completed, defaulted, cancelled)
+        default: active
+      - name: notes
+        type: text
+        nullable: true
+      - name: sold_by_user_id
+        type: uuid
+        references: users.id
+      - name: created_at
+        type: timestamp
+      - name: updated_at
+        type: timestamp
+
+  installments:
+    description: "Individual installment schedule entries"
+    columns:
+      - name: id
+        type: uuid
+        primary: true
+      - name: sale_id
+        type: uuid
+        references: sales.id
+      - name: installment_number
+        type: integer
+      - name: due_date
+        type: date
+      - name: amount_due
+        type: decimal(12,2)
+      - name: amount_paid
+        type: decimal(12,2)
+        default: 0
+      - name: status
+        type: enum(pending, paid, overdue, partially_paid)
+        default: pending
+      - name: paid_at
+        type: timestamp
+        nullable: true
+      - name: created_at
+        type: timestamp
+      - name: updated_at
+        type: timestamp
+
+  payments:
+    description: "Payment records with slip uploads"
+    columns:
+      - name: id
+        type: uuid
+        primary: true
+      - name: installment_id
+        type: uuid
+        references: installments.id
+      - name: amount
+        type: decimal(12,2)
+      - name: payment_date
+        type: date
+      - name: slip_image_url
+        type: varchar(500)
+        nullable: true
+      - name: verified
+        type: boolean
+        default: false
+      - name: verified_by_user_id
+        type: uuid
+        nullable: true
+        references: users.id
+      - name: notes
+        type: text
+        nullable: true
+      - name: created_at
+        type: timestamp
+
+  notification_logs:
+    description: "Reminder notification history"
+    columns:
+      - name: id
+        type: uuid
+        primary: true
+      - name: customer_id
+        type: uuid
+        references: customers.id
+      - name: installment_id
+        type: uuid
+        references: installments.id
+        nullable: true
+      - name: channel
+        type: enum(line, sms, email)
+      - name: message
+        type: text
+      - name: status
+        type: enum(sent, failed, pending)
+      - name: sent_at
+        type: timestamp
+        nullable: true
+      - name: created_at
+        type: timestamp
+
+  addons:
+    description: "Add-on services catalog"
+    columns:
+      - name: id
+        type: uuid
+        primary: true
+      - name: name
+        type: varchar(255)
+      - name: description
+        type: text
+        nullable: true
+      - name: price
+        type: decimal(12,2)
+      - name: active
+        type: boolean
+        default: true
+      - name: created_at
+        type: timestamp
+
+  sale_addons:
+    description: "Add-ons attached to a sale"
+    columns:
+      - name: id
+        type: uuid
+        primary: true
+      - name: sale_id
+        type: uuid
+        references: sales.id
+      - name: addon_id
+        type: uuid
+        references: addons.id
+      - name: price_at_sale
+        type: decimal(12,2)
+      - name: created_at
+        type: timestamp
+
+indexes:
+  - table: installments
+    columns: [sale_id, due_date]
+  - table: installments
+    columns: [status]
+  - table: payments
+    columns: [installment_id]
+  - table: sales
+    columns: [customer_id]
+  - table: motorcycles
+    columns: [status]
+  - table: notification_logs
+    columns: [customer_id, channel]

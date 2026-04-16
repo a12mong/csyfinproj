@@ -1,0 +1,221 @@
+api:
+  base_url: "http://localhost:4000/api"
+  version: v1
+  auth: "Bearer JWT"
+
+endpoints:
+  # --- Auth ---
+  auth:
+    - method: POST
+      path: /api/v1/auth/login
+      description: "User login"
+      request:
+        body: { email: string, password: string }
+      response:
+        200: { token: string, user: User }
+        401: { error: "Invalid credentials" }
+
+    - method: POST
+      path: /api/v1/auth/register
+      description: "Register new user (admin only)"
+      auth: required
+      request:
+        body: { email: string, password: string, name: string, role: string }
+      response:
+        201: { user: User }
+
+  # --- Motorcycles ---
+  motorcycles:
+    - method: GET
+      path: /api/v1/motorcycles
+      description: "List motorcycles with filters"
+      auth: required
+      query: { status?: string, search?: string, page?: number, limit?: number }
+      response:
+        200: { data: Motorcycle[], total: number, page: number }
+
+    - method: GET
+      path: /api/v1/motorcycles/:id
+      description: "Get motorcycle detail"
+      auth: required
+      response:
+        200: { data: Motorcycle }
+
+    - method: POST
+      path: /api/v1/motorcycles
+      description: "Add motorcycle to inventory"
+      auth: required
+      request:
+        body: { model: string, year: number, chassis_number: string, engine_number: string, color: string, cost_price: number, selling_price: number }
+      response:
+        201: { data: Motorcycle }
+
+    - method: PATCH
+      path: /api/v1/motorcycles/:id
+      description: "Update motorcycle"
+      auth: required
+      request:
+        body: { model?: string, color?: string, selling_price?: number, status?: string }
+      response:
+        200: { data: Motorcycle }
+
+  # --- Customers ---
+  customers:
+    - method: GET
+      path: /api/v1/customers
+      description: "List customers"
+      auth: required
+      query: { search?: string, page?: number, limit?: number }
+      response:
+        200: { data: Customer[], total: number }
+
+    - method: GET
+      path: /api/v1/customers/:id
+      description: "Get customer detail with debt summary"
+      auth: required
+      response:
+        200: { data: CustomerWithDebtSummary }
+
+    - method: POST
+      path: /api/v1/customers
+      description: "Create customer"
+      auth: required
+      request:
+        body: { name: string, phone: string, id_card_number: string, email?: string, line_id?: string, address?: string }
+      response:
+        201: { data: Customer }
+
+    - method: PATCH
+      path: /api/v1/customers/:id
+      description: "Update customer"
+      auth: required
+      response:
+        200: { data: Customer }
+
+  # --- Sales ---
+  sales:
+    - method: GET
+      path: /api/v1/sales
+      description: "List sales"
+      auth: required
+      query: { status?: string, customer_id?: string, page?: number }
+      response:
+        200: { data: Sale[], total: number }
+
+    - method: GET
+      path: /api/v1/sales/:id
+      description: "Get sale detail with installments"
+      auth: required
+      response:
+        200: { data: SaleWithInstallments }
+
+    - method: POST
+      path: /api/v1/sales
+      description: "Create new sale (generates installment schedule)"
+      auth: required
+      request:
+        body:
+          customer_id: string
+          motorcycle_id: string
+          total_price: number
+          down_payment: number
+          num_installments: number
+          interest_rate: number
+          payment_method: "cash | installment"
+          addon_ids?: string[]
+          notes?: string
+      response:
+        201: { data: SaleWithInstallments }
+
+  # --- Installments ---
+  installments:
+    - method: GET
+      path: /api/v1/installments
+      description: "List installments with filters"
+      auth: required
+      query: { sale_id?: string, status?: string, overdue?: boolean, page?: number }
+      response:
+        200: { data: Installment[], total: number }
+
+    - method: GET
+      path: /api/v1/installments/:id
+      description: "Get installment detail with payment history"
+      auth: required
+      response:
+        200: { data: InstallmentWithPayments }
+
+  # --- Payments ---
+  payments:
+    - method: POST
+      path: /api/v1/payments
+      description: "Record a payment (with optional slip upload)"
+      auth: required
+      request:
+        content_type: multipart/form-data
+        body:
+          installment_id: string
+          amount: number
+          payment_date: string
+          slip_image?: file
+          notes?: string
+      response:
+        201: { data: Payment }
+
+    - method: PATCH
+      path: /api/v1/payments/:id/verify
+      description: "Verify a payment slip"
+      auth: required
+      request:
+        body: { verified: boolean, notes?: string }
+      response:
+        200: { data: Payment }
+
+  # --- Notifications ---
+  notifications:
+    - method: POST
+      path: /api/v1/notifications/send-reminders
+      description: "Trigger payment reminders for overdue installments"
+      auth: required
+      request:
+        body: { channel?: "line | sms | email", customer_id?: string }
+      response:
+        200: { sent: number, failed: number }
+
+    - method: GET
+      path: /api/v1/notifications/logs
+      description: "View notification history"
+      auth: required
+      query: { customer_id?: string, channel?: string, page?: number }
+      response:
+        200: { data: NotificationLog[], total: number }
+
+  # --- Add-ons ---
+  addons:
+    - method: GET
+      path: /api/v1/addons
+      description: "List add-on services"
+      auth: required
+      response:
+        200: { data: Addon[] }
+
+    - method: POST
+      path: /api/v1/addons
+      description: "Create add-on service"
+      auth: required
+      request:
+        body: { name: string, description?: string, price: number }
+      response:
+        201: { data: Addon }
+
+types:
+  User: { id: uuid, email: string, name: string, role: string }
+  Customer: { id: uuid, name: string, phone: string, email?: string, line_id?: string, id_card_number: string, address?: string }
+  CustomerWithDebtSummary: { ...Customer, total_debt: number, paid_amount: number, overdue_count: number }
+  Motorcycle: { id: uuid, brand: string, model: string, year: number, chassis_number: string, engine_number: string, color: string, cost_price: number, selling_price: number, status: string }
+  Sale: { id: uuid, customer_id: uuid, motorcycle_id: uuid, sale_date: date, total_price: number, down_payment: number, finance_amount: number, num_installments: number, interest_rate: number, payment_method: string, status: string }
+  SaleWithInstallments: { ...Sale, customer: Customer, motorcycle: Motorcycle, installments: Installment[], addons: Addon[] }
+  Installment: { id: uuid, sale_id: uuid, installment_number: number, due_date: date, amount_due: number, amount_paid: number, status: string }
+  InstallmentWithPayments: { ...Installment, payments: Payment[] }
+  Payment: { id: uuid, installment_id: uuid, amount: number, payment_date: date, slip_image_url?: string, verified: boolean }
+  Addon: { id: uuid, name: string, description?: string, price: number, active: boolean }
+  NotificationLog: { id: uuid, customer_id: uuid, installment_id?: uuid, channel: string, message: string, status: string, sent_at?: timestamp }

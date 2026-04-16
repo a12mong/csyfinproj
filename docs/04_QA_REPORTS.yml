@@ -1,0 +1,26 @@
+qa:
+  project: CSYFinproj
+  last_run: null
+  status: not_started
+
+test_suites:
+  unit_tests:
+    backend:
+      status: not_started
+      coverage: 0
+      notes: "Pending backend scaffold"
+    frontend:
+      status: not_started
+      coverage: 0
+      notes: "Pending frontend scaffold"
+
+  integration_tests:
+    api:
+      status: not_started
+      notes: "Pending API implementation"
+
+  e2e_tests:
+    status: not_started
+    notes: "Pending full application setup"
+
+reports: []
