@@ -81,6 +81,12 @@ enum ContractStatus {
   cancelled
 }
 
+enum ContractPartyRole {
+  owner
+  buyer
+  seller
+}
+
 enum NotificationStatus {
   sent
   failed
@@ -179,20 +185,23 @@ model Sale {
   paymentMethod          PaymentMethod @map("payment_method")
   financeCompanyName     String?       @map("finance_company_name") @db.VarChar(255)
   financeReferenceNumber String?       @map("finance_reference_number") @db.VarChar(100)
+  financialInstitutionId String?       @map("financial_institution_id") @db.VarChar(36)
   status                 SaleStatus    @default(active)
   notes                  String?       @db.Text
   soldByUserId           String        @map("sold_by_user_id") @db.VarChar(36)
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  customer      Customer       @relation(fields: [customerId], references: [id])
-  motorcycle    Motorcycle     @relation(fields: [motorcycleId], references: [id])
-  soldBy        User           @relation(fields: [soldByUserId], references: [id])
-  installments  Installment[]
-  saleAddons    SaleAddon[]
-  contractSales ContractSale[]
+  customer              Customer               @relation(fields: [customerId], references: [id])
+  motorcycle            Motorcycle             @relation(fields: [motorcycleId], references: [id])
+  soldBy                User                   @relation(fields: [soldByUserId], references: [id])
+  financialInstitution  FinancialInstitution?  @relation(fields: [financialInstitutionId], references: [id])
+  installments          Installment[]
+  saleAddons            SaleAddon[]
+  contractSales         ContractSale[]
 
   @@index([customerId])
+  @@index([financialInstitutionId])
   @@map("sales")
 }
 
@@ -203,6 +212,9 @@ model Installment {
   installmentNumber Int               @map("installment_number")
   dueDate           DateTime          @map("due_date") @db.Date
   amountDue         Decimal           @map("amount_due") @db.Decimal(12, 2)
+  principalPortion  Decimal?          @map("principal_portion") @db.Decimal(12, 2)
+  interestPortion   Decimal?          @map("interest_portion") @db.Decimal(12, 2)
+  remainingBalance  Decimal?          @map("remaining_balance") @db.Decimal(12, 2)
   amountPaid        Decimal           @default(0) @map("amount_paid") @db.Decimal(12, 2)
   status            InstallmentStatus @default(pending)
   paidAt            DateTime?         @map("paid_at")
@@ -322,30 +334,66 @@ model DeliveryNoteItem {
 }
 
 model Contract {
-  id              String         @id @default(uuid()) @db.VarChar(36)
-  contractNumber  String         @unique @map("contract_number") @db.VarChar(50)
-  customerId      String         @map("customer_id") @db.VarChar(36)
-  totalPrincipal  Decimal        @map("total_principal") @db.Decimal(12, 2)
-  totalInterest   Decimal        @map("total_interest") @db.Decimal(12, 2)
-  totalAmount     Decimal        @map("total_amount") @db.Decimal(12, 2)
-  numInstallments Int            @map("num_installments")
-  interestRate    Decimal        @map("interest_rate") @db.Decimal(5, 2)
-  startDate       DateTime       @map("start_date") @db.Date
-  status          ContractStatus @default(active)
-  notes           String?        @db.Text
-  createdByUserId String         @map("created_by_user_id") @db.VarChar(36)
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  id                     String         @id @default(uuid()) @db.VarChar(36)
+  contractNumber         String         @unique @map("contract_number") @db.VarChar(50)
+  customerId             String         @map("customer_id") @db.VarChar(36)
+  totalPrincipal         Decimal        @map("total_principal") @db.Decimal(12, 2)
+  totalInterest          Decimal        @map("total_interest") @db.Decimal(12, 2)
+  totalAmount            Decimal        @map("total_amount") @db.Decimal(12, 2)
+  numInstallments        Int            @map("num_installments")
+  interestRate           Decimal        @map("interest_rate") @db.Decimal(5, 2)
+  startDate              DateTime       @map("start_date") @db.Date
+  financialInstitutionId String?        @map("financial_institution_id") @db.VarChar(36)
+  status                 ContractStatus @default(active)
+  notes                  String?        @db.Text
+  createdByUserId        String         @map("created_by_user_id") @db.VarChar(36)
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
 
-  customer      Customer       @relation(fields: [customerId], references: [id])
-  createdBy     User           @relation("CreatedContracts", fields: [createdByUserId], references: [id])
-  contractSales ContractSale[]
-  installments  Installment[]
-  payments      Payment[]
+  customer              Customer              @relation(fields: [customerId], references: [id])
+  createdBy             User                  @relation("CreatedContracts", fields: [createdByUserId], references: [id])
+  financialInstitution  FinancialInstitution? @relation(fields: [financialInstitutionId], references: [id])
+  contractSales         ContractSale[]
+  installments          Installment[]
+  payments              Payment[]
+  contractParties       ContractParty[]
 
   @@index([customerId])
   @@index([status])
+  @@index([financialInstitutionId])
   @@map("contracts")
+}
+
+model FinancialInstitution {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  name        String   @db.VarChar(255)
+  code        String   @unique @db.VarChar(50)
+  contactInfo String?  @map("contact_info") @db.Text
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  sales     Sale[]
+  contracts Contract[]
+
+  @@map("financial_institutions")
+}
+
+model ContractParty {
+  id            String            @id @default(uuid()) @db.VarChar(36)
+  contractId    String            @map("contract_id") @db.VarChar(36)
+  role          ContractPartyRole
+  partyName     String            @map("party_name") @db.VarChar(255)
+  partyRefId    String?           @map("party_ref_id") @db.VarChar(36)
+  partyRefType  String?           @map("party_ref_type") @db.VarChar(50)
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([role])
+  @@map("contract_parties")
 }
 
 model ContractSale {
