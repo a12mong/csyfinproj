@@ -9,6 +9,7 @@ import { paymentsRouter } from "./modules/payments/payments.router.js";
 import { addonsRouter } from "./modules/addons/addons.router.js";
 import { installmentsRouter } from "./modules/installments/installments.router.js";
 import { notificationsRouter } from "./modules/notifications/notifications.router.js";
+import { deliveryNotesRouter } from "./modules/grn/delivery-notes.router.js";
 
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
@@ -34,6 +35,7 @@ app.use("/api/v1/payments", paymentsRouter);
 app.use("/api/v1/addons", addonsRouter);
 app.use("/api/v1/installments", installmentsRouter);
 app.use("/api/v1/notifications", notificationsRouter);
+app.use("/api/v1/delivery-notes", deliveryNotesRouter);
 
 app.listen(PORT, () => {
   console.log(`API server running on http://localhost:${PORT}`);
