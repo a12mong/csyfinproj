@@ -13,6 +13,17 @@ enum UserRole {
   viewer
 }
 
+enum PermissionPage {
+  dashboard
+  inventory
+  receiving
+  sales
+  customers
+  finance
+  payments
+  settings
+}
+
 enum MotorcycleStatus {
   in_stock
   reserved
@@ -83,8 +94,27 @@ model User {
   sales             Sale[]
   verifiedPayments  Payment[] @relation("VerifiedBy")
   deliveryNotes     DeliveryNote[]
+  permissions       UserPermission[]
 
   @@map("users")
+}
+
+model UserPermission {
+  id        String         @id @default(uuid()) @db.VarChar(36)
+  userId    String         @map("user_id") @db.VarChar(36)
+  page      PermissionPage
+  canView   Boolean        @default(false) @map("can_view")
+  canCreate Boolean        @default(false) @map("can_create")
+  canEdit   Boolean        @default(false) @map("can_edit")
+  canDelete Boolean        @default(false) @map("can_delete")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, page])
+  @@index([userId])
+  @@map("user_permissions")
 }
 
 model Customer {

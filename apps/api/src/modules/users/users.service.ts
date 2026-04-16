@@ -6,6 +6,7 @@ import type {
   UpdateUserInput,
   ResetPasswordInput,
 } from "./users.schemas.js";
+import { createDefaultPermissions } from "../permissions/permissions.service.js";
 
 export interface UserDto {
   id: string;
@@ -99,6 +100,8 @@ export async function createUser(input: CreateUserInput) {
       role: input.role,
     },
   });
+
+  await createDefaultPermissions(user.id, user.role);
 
   return { data: toUserDto(user) };
 }

@@ -62,3 +62,50 @@ export function requireRole(...roles: Array<"admin" | "staff" | "viewer">) {
     next();
   };
 }
+
+type PermissionAction = "canView" | "canCreate" | "canEdit" | "canDelete";
+type PermissionPage =
+  | "dashboard"
+  | "inventory"
+  | "receiving"
+  | "sales"
+  | "customers"
+  | "finance"
+  | "payments"
+  | "settings";
+
+/**
+ * Middleware that checks page-level permissions.
+ * Admin users always pass. Other roles are checked against the UserPermission table.
+ * Must be used AFTER requireAuth.
+ */
+export function requirePermission(page: PermissionPage, action: PermissionAction) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    // Admins bypass all page-level permission checks
+    if (req.user.role === "admin") {
+      next();
+      return;
+    }
+
+    prisma.userPermission
+      .findUnique({
+        where: { userId_page: { userId: req.user.sub, page } },
+        select: { [action]: true },
+      })
+      .then((permission) => {
+        if (!permission || !permission[action as keyof typeof permission]) {
+          res.status(403).json({ error: `Forbidden: missing ${action} permission on ${page}` });
+          return;
+        }
+        next();
+      })
+      .catch(() => {
+        res.status(500).json({ error: "Internal server error" });
+      });
+  };
+}
