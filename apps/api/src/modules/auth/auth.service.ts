@@ -34,6 +34,10 @@ export async function login(input: LoginInput): Promise<{ token: string; user: U
     throw Object.assign(new Error("Invalid credentials"), { statusCode: 401 });
   }
 
+  if (!user.active) {
+    throw Object.assign(new Error("Account is inactive"), { statusCode: 403 });
+  }
+
   const token = jwt.sign(
     { sub: user.id, email: user.email, role: user.role },
     JWT_SECRET,
