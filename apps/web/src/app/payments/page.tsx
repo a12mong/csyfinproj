@@ -226,9 +226,6 @@ function PaymentsContent() {
     setSubmitError(null);
     setSubmitSuccess(null);
 
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
     const formData = new FormData();
     formData.append("amount", amount);
     formData.append("payment_date", paymentDate);
@@ -273,9 +270,7 @@ function PaymentsContent() {
     try {
       const res = await fetch(`${API_BASE_URL}/payments`, {
         method: "POST",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        credentials: "include",
         body: formData,
       });
 
