@@ -1,7 +1,8 @@
-import express from "express";
+import express, { type Application } from "express";
 import cors from "cors";
+import { authRouter } from "./modules/auth/auth.router.js";
 
-const app = express();
+const app: Application = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
@@ -12,8 +13,8 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// API v1 routes will be mounted here
-// app.use("/api/v1/auth", authRouter);
+// API v1 routes
+app.use("/api/v1/auth", authRouter);
 // app.use("/api/v1/motorcycles", motorcyclesRouter);
 // app.use("/api/v1/customers", customersRouter);
 // app.use("/api/v1/sales", salesRouter);
