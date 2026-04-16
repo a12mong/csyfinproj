@@ -3,6 +3,15 @@ api:
   version: v1
   auth: "Bearer JWT"
 
+# ─── Enums (from Prisma schema) ───
+enums:
+  PaymentMethod: "cash | installment | finance_company"
+  PaymentChannel: "cash | bank_transfer | line"
+  SaleStatus: "active | completed | defaulted | cancelled"
+  ContractStatus: "active | completed | defaulted | cancelled"
+  InstallmentStatus: "pending | paid | overdue | partially_paid"
+  MotorcycleStatus: "in_stock | reserved | sold"
+
 endpoints:
   # --- Auth ---
   auth:
@@ -93,25 +102,37 @@ endpoints:
         200: { data: Customer }
 
   # --- Sales ---
+  # Updated to support 3 payment methods: cash, installment (in-house), finance_company
   sales:
     - method: GET
       path: /api/v1/sales
-      description: "List sales"
+      description: "List sales with filters"
       auth: required
-      query: { status?: string, customer_id?: string, page?: number }
+      query:
+        status?: "SaleStatus"
+        customer_id?: string
+        payment_method?: "PaymentMethod"
+        search?: "string — search by customer name or motorcycle model"
+        date_from?: "string (YYYY-MM-DD)"
+        date_to?: "string (YYYY-MM-DD)"
+        page?: number
+        limit?: number
       response:
-        200: { data: Sale[], total: number }
+        200: { data: Sale[], total: number, page: number }
 
     - method: GET
       path: /api/v1/sales/:id
-      description: "Get sale detail with installments"
+      description: "Get sale detail with installments, contract info, and addons"
       auth: required
       response:
-        200: { data: SaleWithInstallments }
+        200: { data: SaleWithDetails }
 
     - method: POST
       path: /api/v1/sales
-      description: "Create new sale (generates installment schedule)"
+      description: |
+        Create new sale. For cash sales, marks motorcycle as sold immediately.
+        For installment/finance_company, sale is created but contract and
+        installment schedule are created separately via /contracts endpoints.
       auth: required
       request:
         body:
@@ -119,21 +140,255 @@ endpoints:
           motorcycle_id: string
           total_price: number
           down_payment: number
-          num_installments: number
-          interest_rate: number
-          payment_method: "cash | installment"
+          finance_amount: "number — total_price minus down_payment"
+          num_installments: "number — 0 for cash"
+          interest_rate: "number — annual rate %, 0 for cash"
+          payment_method: "cash | installment | finance_company"
+          finance_company_name?: "string — required when payment_method is finance_company"
+          finance_reference_number?: "string — optional reference from finance company"
           addon_ids?: string[]
           notes?: string
       response:
-        201: { data: SaleWithInstallments }
+        201: { data: SaleWithDetails }
+      errors:
+        400: "VALIDATION_ERROR — missing required fields or invalid values"
+        400: "FINANCE_COMPANY_REQUIRED — finance_company_name required when payment_method is finance_company"
+        404: "CUSTOMER_NOT_FOUND"
+        404: "MOTORCYCLE_NOT_FOUND"
+        409: "MOTORCYCLE_NOT_AVAILABLE — motorcycle status is not in_stock"
 
-  # --- Installments ---
+    - method: PATCH
+      path: /api/v1/sales/:id
+      description: "Update sale (limited fields based on status)"
+      auth: required
+      request:
+        body:
+          status?: "SaleStatus"
+          notes?: string
+          finance_company_name?: string
+          finance_reference_number?: string
+      response:
+        200: { data: SaleWithDetails }
+      errors:
+        400: "INVALID_STATUS_TRANSITION"
+        404: "SALE_NOT_FOUND"
+
+  # --- Contracts (NEW — TDS-54) ---
+  # Contract groups one or more sales under a single financing agreement.
+  # Installment schedules are generated under the contract using Declining Balance method.
+  contracts:
+    - method: POST
+      path: /api/v1/contracts
+      description: |
+        Create a new contract linking one or more sales.
+        Generates installment schedule automatically using Declining Balance (Reducing Balance).
+        Formula: EMI = P × r × (1+r)^n / ((1+r)^n - 1)
+        where P = principal, r = monthly rate, n = number of installments.
+      auth: required
+      request:
+        body:
+          customer_id: "string (uuid)"
+          sale_ids: "string[] — at least one sale ID to link"
+          total_principal: "number — total finance amount (sum of sale finance_amounts)"
+          interest_rate: "number — annual interest rate %"
+          num_installments: "number — total installment periods (months)"
+          start_date: "string (YYYY-MM-DD) — first installment due date"
+          notes?: string
+      response:
+        201:
+          data:
+            id: uuid
+            contract_number: "string — auto-generated (e.g. CTR-202604-0001)"
+            customer_id: uuid
+            customer: Customer
+            total_principal: number
+            total_interest: "number — calculated total interest over all installments"
+            total_amount: "number — total_principal + total_interest"
+            num_installments: number
+            interest_rate: number
+            start_date: date
+            status: "active"
+            notes: "string | null"
+            sales: "Sale[] — linked sales"
+            installments: "ContractInstallment[] — auto-generated schedule"
+            created_by_user_id: uuid
+            created_at: timestamp
+      errors:
+        400: "VALIDATION_ERROR — missing required fields"
+        400: "NO_SALES_PROVIDED — sale_ids must not be empty"
+        400: "SALE_NOT_ELIGIBLE — sale payment_method must be installment or finance_company"
+        404: "CUSTOMER_NOT_FOUND"
+        404: "SALE_NOT_FOUND — one or more sale_ids not found"
+        409: "SALE_ALREADY_CONTRACTED — sale is already linked to another contract"
+      side_effects:
+        - "ContractSale join records created for each sale"
+        - "Installment records created with contract_id (not sale_id)"
+        - "Each installment shows: principal, interest (declining balance), total, remaining balance"
+
+    - method: GET
+      path: /api/v1/contracts
+      description: "List contracts with filters"
+      auth: required
+      query:
+        status?: "ContractStatus"
+        customer_id?: string
+        search?: "string — search by contract_number or customer name"
+        date_from?: "string (YYYY-MM-DD)"
+        date_to?: "string (YYYY-MM-DD)"
+        page?: number
+        limit?: number
+      response:
+        200:
+          data: "ContractSummary[]"
+          total: number
+          page: number
+
+    - method: GET
+      path: /api/v1/contracts/:id
+      description: "Get contract detail with installment schedule, linked sales, and payment summary"
+      auth: required
+      response:
+        200:
+          data:
+            id: uuid
+            contract_number: string
+            customer_id: uuid
+            customer: CustomerWithDebtSummary
+            total_principal: number
+            total_interest: number
+            total_amount: number
+            num_installments: number
+            interest_rate: number
+            start_date: date
+            status: ContractStatus
+            notes: "string | null"
+            created_by_user_id: uuid
+            created_at: timestamp
+            updated_at: timestamp
+            sales: "SaleSummary[] — linked sales with motorcycle info"
+            installments: "ContractInstallment[] — full schedule with status"
+            summary:
+              total_paid: number
+              total_remaining: number
+              paid_installments: number
+              pending_installments: number
+              overdue_installments: number
+              next_due_date: "date | null"
+              next_due_amount: "number | null"
+      errors:
+        404: "CONTRACT_NOT_FOUND"
+
+    - method: PATCH
+      path: /api/v1/contracts/:id
+      description: "Update contract status or notes"
+      auth: required
+      request:
+        body:
+          status?: "ContractStatus — allowed transitions: active→completed, active→defaulted, active→cancelled"
+          notes?: string
+      response:
+        200: { data: ContractDetail }
+      errors:
+        400: "INVALID_STATUS_TRANSITION"
+        404: "CONTRACT_NOT_FOUND"
+
+    - method: POST
+      path: /api/v1/contracts/:id/regenerate-schedule
+      description: |
+        Regenerate installment schedule for a contract (admin only).
+        Only allowed when no payments have been recorded yet.
+        Uses Declining Balance method with updated parameters.
+      auth: "admin only"
+      request:
+        body:
+          total_principal?: "number — override principal"
+          interest_rate?: "number — override annual rate"
+          num_installments?: "number — override installment count"
+          start_date?: "string (YYYY-MM-DD) — override start date"
+      response:
+        200:
+          data:
+            contract_id: uuid
+            installments: "ContractInstallment[]"
+            summary:
+              total_principal: number
+              total_interest: number
+              total_amount: number
+      errors:
+        400: "PAYMENTS_EXIST — cannot regenerate after payments recorded"
+        404: "CONTRACT_NOT_FOUND"
+
+  # --- Contract Installments (NEW — TDS-54) ---
+  contract_installments:
+    - method: GET
+      path: /api/v1/contracts/:id/installments
+      description: "Get installment schedule for a contract with payment summary"
+      auth: required
+      response:
+        200:
+          data: "ContractInstallment[]"
+          summary:
+            total_principal: number
+            total_interest: number
+            total_amount: number
+            total_paid: number
+            total_remaining: number
+            next_due_date: "date | null"
+            next_due_amount: "number | null"
+      errors:
+        404: "CONTRACT_NOT_FOUND"
+
+    - method: POST
+      path: /api/v1/contracts/:contract_id/installments/:installment_id/pay
+      description: |
+        Record a payment for a contract installment.
+        Supports partial payments. Updates installment status accordingly.
+      auth: required
+      request:
+        content_type: multipart/form-data
+        body:
+          amount: number
+          payment_date: "string (YYYY-MM-DD)"
+          payment_channel: "cash | bank_transfer | line"
+          slip_image?: file
+          notes?: string
+      response:
+        201:
+          data:
+            payment: Payment
+            installment:
+              id: uuid
+              installment_number: number
+              amount_due: number
+              amount_paid: "number — cumulative"
+              status: "InstallmentStatus — updated"
+            contract_status: "ContractStatus — updated to completed if all paid"
+      errors:
+        400: "VALIDATION_ERROR — invalid amount or date"
+        400: "ALREADY_FULLY_PAID — installment already paid in full"
+        400: "AMOUNT_EXCEEDS_DUE — payment exceeds remaining amount"
+        400: "CONTRACT_NOT_ACTIVE — contract must be active"
+        404: "INSTALLMENT_NOT_FOUND"
+      side_effects:
+        - "Installment amount_paid increased, status updated (paid/partially_paid)"
+        - "Payment record created with contract_id and installment_id"
+        - "If all installments paid → contract status → completed"
+        - "Motorcycle status unchanged (already sold at sale time)"
+
+  # --- Installments (existing + updated) ---
   installments:
     - method: GET
       path: /api/v1/installments
-      description: "List installments with filters"
+      description: "List installments across all sales and contracts"
       auth: required
-      query: { sale_id?: string, status?: string, overdue?: boolean, page?: number }
+      query:
+        sale_id?: string
+        contract_id?: string
+        status?: "InstallmentStatus"
+        overdue?: boolean
+        customer_id?: "string — filter by customer across sales/contracts"
+        page?: number
+        limit?: number
       response:
         200: { data: Installment[], total: number }
 
@@ -148,18 +403,23 @@ endpoints:
   payments:
     - method: POST
       path: /api/v1/payments
-      description: "Record a payment (with optional slip upload)"
+      description: "Record a payment for a sale installment (with optional slip upload)"
       auth: required
       request:
         content_type: multipart/form-data
         body:
           installment_id: string
+          contract_id?: "string — optional, links payment to contract directly"
           amount: number
           payment_date: string
+          payment_channel?: "cash | bank_transfer | line"
           slip_image?: file
           notes?: string
       response:
         201: { data: Payment }
+      errors:
+        400: "VALIDATION_ERROR"
+        404: "INSTALLMENT_NOT_FOUND"
 
     - method: PATCH
       path: /api/v1/payments/:id/verify
@@ -207,15 +467,170 @@ endpoints:
       response:
         201: { data: Addon }
 
+# ─── Types ───
 types:
   User: { id: uuid, email: string, name: string, role: string }
   Customer: { id: uuid, name: string, phone: string, email?: string, line_id?: string, id_card_number: string, address?: string }
   CustomerWithDebtSummary: { ...Customer, total_debt: number, paid_amount: number, overdue_count: number }
-  Motorcycle: { id: uuid, brand: string, model: string, year: number, chassis_number: string, engine_number: string, color: string, cost_price: number, selling_price: number, status: string }
-  Sale: { id: uuid, customer_id: uuid, motorcycle_id: uuid, sale_date: date, total_price: number, down_payment: number, finance_amount: number, num_installments: number, interest_rate: number, payment_method: string, status: string }
-  SaleWithInstallments: { ...Sale, customer: Customer, motorcycle: Motorcycle, installments: Installment[], addons: Addon[] }
-  Installment: { id: uuid, sale_id: uuid, installment_number: number, due_date: date, amount_due: number, amount_paid: number, status: string }
+  Motorcycle: { id: uuid, brand: string, model: string, year: number, chassis_number: string, engine_number: string, color: string, cost_price: number, selling_price: number, status: MotorcycleStatus }
+
+  # Sale types
+  Sale:
+    id: uuid
+    customer_id: uuid
+    motorcycle_id: uuid
+    sale_date: date
+    total_price: number
+    down_payment: number
+    finance_amount: number
+    num_installments: number
+    interest_rate: number
+    payment_method: PaymentMethod
+    finance_company_name: "string | null"
+    finance_reference_number: "string | null"
+    status: SaleStatus
+    notes: "string | null"
+    sold_by_user_id: uuid
+  SaleSummary:
+    id: uuid
+    total_price: number
+    down_payment: number
+    finance_amount: number
+    payment_method: PaymentMethod
+    motorcycle: { id: uuid, brand: string, model: string, chassis_number: string }
+  SaleWithDetails:
+    ...Sale
+    customer: Customer
+    motorcycle: Motorcycle
+    installments: Installment[]
+    addons: Addon[]
+    contract_sales: "ContractSaleRef[] | [] — linked contract(s) if any"
+
+  # Contract types (NEW — TDS-54)
+  Contract:
+    id: uuid
+    contract_number: string
+    customer_id: uuid
+    total_principal: number
+    total_interest: number
+    total_amount: number
+    num_installments: number
+    interest_rate: "number — annual rate %"
+    start_date: date
+    status: ContractStatus
+    notes: "string | null"
+    created_by_user_id: uuid
+    created_at: timestamp
+    updated_at: timestamp
+  ContractSummary:
+    ...Contract
+    customer: { id: uuid, name: string, phone: string }
+    paid_installments: number
+    total_paid: number
+    total_remaining: number
+  ContractDetail:
+    ...Contract
+    customer: CustomerWithDebtSummary
+    sales: SaleSummary[]
+    installments: ContractInstallment[]
+    summary:
+      total_paid: number
+      total_remaining: number
+      paid_installments: number
+      pending_installments: number
+      overdue_installments: number
+      next_due_date: "date | null"
+      next_due_amount: "number | null"
+  ContractSaleRef:
+    contract_id: uuid
+    contract_number: string
+    status: ContractStatus
+
+  # Installment types
+  Installment:
+    id: uuid
+    sale_id: "uuid | null"
+    contract_id: "uuid | null"
+    installment_number: number
+    due_date: date
+    amount_due: number
+    amount_paid: number
+    status: InstallmentStatus
+    paid_at: "timestamp | null"
+  ContractInstallment:
+    description: "Installment with Declining Balance breakdown"
+    id: uuid
+    contract_id: uuid
+    installment_number: number
+    due_date: date
+    amount_due: "number — EMI (principal + interest for this period)"
+    principal_portion: "number — principal portion of this installment"
+    interest_portion: "number — interest portion (declining balance)"
+    remaining_balance: "number — outstanding principal after this installment"
+    amount_paid: number
+    status: InstallmentStatus
+    paid_at: "timestamp | null"
   InstallmentWithPayments: { ...Installment, payments: Payment[] }
-  Payment: { id: uuid, installment_id: uuid, amount: number, payment_date: date, slip_image_url?: string, verified: boolean }
+
+  # Payment types
+  Payment:
+    id: uuid
+    installment_id: "uuid | null"
+    contract_id: "uuid | null"
+    amount: number
+    payment_date: date
+    payment_channel: PaymentChannel
+    slip_image_url: "string | null"
+    verified: boolean
+    verified_by_user_id: "uuid | null"
+    notes: "string | null"
+    created_at: timestamp
+
+  # Other types
   Addon: { id: uuid, name: string, description?: string, price: number, active: boolean }
   NotificationLog: { id: uuid, customer_id: uuid, installment_id?: uuid, channel: string, message: string, status: string, sent_at?: timestamp }
+
+# ─── Workflow: Sales with Contract (TDS-54) ───
+# Describes the API call sequence for each payment method.
+workflows:
+  cash_sale:
+    description: "Full cash payment — no contract needed"
+    steps:
+      - "POST /api/v1/sales (payment_method: cash, down_payment = total_price)"
+      - "Motorcycle status → sold"
+      - "Sale status → completed immediately"
+
+  installment_sale:
+    description: "In-house installment — contract with declining balance schedule"
+    steps:
+      - "POST /api/v1/sales (payment_method: installment)"
+      - "POST /api/v1/contracts (sale_ids: [sale_id], interest_rate, num_installments, start_date)"
+      - "→ Contract created with auto-generated installment schedule"
+      - "POST /api/v1/contracts/:id/installments/:iid/pay — repeat monthly"
+      - "→ When all installments paid, contract status → completed"
+
+  finance_company_sale:
+    description: "Financing through external company (e.g. bank, leasing)"
+    steps:
+      - "POST /api/v1/sales (payment_method: finance_company, finance_company_name: '...')"
+      - "POST /api/v1/contracts (sale_ids: [sale_id], terms from finance company)"
+      - "→ Contract tracks the finance company's installment schedule"
+      - "POST /api/v1/contracts/:id/installments/:iid/pay — record each payment"
+      - "→ Finance company name stored on sale for reference"
+
+  amortization_formula:
+    description: "Declining Balance (Reducing Balance) calculation used by POST /contracts"
+    formula: |
+      Monthly Rate (r) = Annual Interest Rate / 12 / 100
+      EMI = P × r × (1+r)^n / ((1+r)^n - 1)
+
+      Per installment:
+        interest_portion = remaining_balance × r
+        principal_portion = EMI - interest_portion
+        remaining_balance = previous_balance - principal_portion
+
+      Notes:
+        - Last installment adjusted for rounding remainder
+        - All amounts stored as Decimal(12,2)
+        - total_interest = sum of all interest_portions
+        - total_amount = total_principal + total_interest

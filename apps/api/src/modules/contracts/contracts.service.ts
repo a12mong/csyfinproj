@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import type { CreateContractInput, UpdateContractInput, ListContractsQuery } from "./contracts.schemas.js";
+import type { Prisma } from "@prisma/client";
 
 /**
  * Generate a contract number in the format CTR-YYYYMM-NNN.
@@ -26,10 +27,43 @@ async function generateContractNumber(): Promise<string> {
   return `${prefix}${String(sequence).padStart(3, "0")}`;
 }
 
+/**
+ * Compute total interest using the declining balance EMI formula to get exact totals
+ * that match the per-installment schedule generation.
+ */
+function computeEmiTotals(
+  principal: number,
+  annualRate: number,
+  numInstallments: number
+): { totalInterest: number; totalAmount: number } {
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  if (annualRate === 0) {
+    return { totalInterest: 0, totalAmount: principal };
+  }
+  const r = annualRate / 12 / 100;
+  const factor = Math.pow(1 + r, numInstallments);
+  const emi = round2((principal * r * factor) / (factor - 1));
+  // Sum of all EMIs minus principal = total interest
+  // Last installment may differ, so compute as total − principal
+  let totalInterest = round2(emi * (numInstallments - 1));
+  let remaining = principal;
+  for (let i = 1; i <= numInstallments; i++) {
+    const interest = round2(remaining * r);
+    const principalPart = i === numInstallments ? round2(remaining) : round2(emi - interest);
+    remaining = round2(remaining - principalPart);
+    if (i === numInstallments) {
+      totalInterest = round2(totalInterest + interest);
+    }
+  }
+  return { totalInterest, totalAmount: round2(principal + totalInterest) };
+}
+
 export async function createContract(input: CreateContractInput, userId: string) {
-  const totalInterest =
-    input.total_principal * (input.interest_rate / 100) * (input.num_installments / 12);
-  const totalAmount = input.total_principal + totalInterest;
+  const { totalInterest, totalAmount } = computeEmiTotals(
+    input.total_principal,
+    input.interest_rate,
+    input.num_installments
+  );
 
   const contractNumber = await generateContractNumber();
 
@@ -60,11 +94,12 @@ export async function createContract(input: CreateContractInput, userId: string)
     );
   }
 
-  // Optionally generate installment schedule
+  // Always generate installment schedule (auto-generated on contract creation per TDS-55)
   let installments: object[] = [];
   if (input.generate_installments) {
     installments = await generateInstallmentSchedule(contract.id, {
-      totalAmount,
+      principal: input.total_principal,
+      annualRate: input.interest_rate,
       numInstallments: input.num_installments,
       startDate: new Date(input.start_date),
     });
@@ -82,30 +117,84 @@ export async function createContract(input: CreateContractInput, userId: string)
   return { data: { ...result, installments } };
 }
 
+/**
+ * Generate installment schedule using Declining Balance (Reducing Balance) method.
+ *
+ * EMI = P × r × (1+r)^n / ((1+r)^n - 1)
+ * where r = annualRate / 12 / 100, n = numInstallments, P = principal
+ *
+ * Per period:
+ *   interest_portion   = remaining_balance × r
+ *   principal_portion  = EMI - interest_portion
+ *   remaining_balance -= principal_portion
+ *
+ * Special case: 0% interest → equal principal split.
+ */
 async function generateInstallmentSchedule(
   contractId: string,
-  options: { totalAmount: number; numInstallments: number; startDate: Date }
+  options: {
+    principal: number;
+    annualRate: number;
+    numInstallments: number;
+    startDate: Date;
+  }
 ) {
-  const { totalAmount, numInstallments, startDate } = options;
+  const { principal, annualRate, numInstallments, startDate } = options;
 
-  // Equal monthly installments, with last installment absorbing rounding difference
-  const baseAmount = Math.floor((totalAmount / numInstallments) * 100) / 100;
-  const lastAmount =
-    Math.round((totalAmount - baseAmount * (numInstallments - 1)) * 100) / 100;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+
+  let emiAmount: number;
+  let schedule: Array<{ principal: number; interest: number; balance: number }>;
+
+  if (annualRate === 0) {
+    // Zero-interest: equal principal per period
+    const basePrincipal = round2(principal / numInstallments);
+    schedule = [];
+    let remaining = principal;
+    for (let i = 1; i <= numInstallments; i++) {
+      const p = i === numInstallments ? round2(remaining) : basePrincipal;
+      remaining = round2(remaining - p);
+      schedule.push({ principal: p, interest: 0, balance: remaining });
+    }
+    emiAmount = basePrincipal;
+  } else {
+    const r = annualRate / 12 / 100;
+    const factor = Math.pow(1 + r, numInstallments);
+    emiAmount = round2((principal * r * factor) / (factor - 1));
+
+    schedule = [];
+    let remaining = principal;
+    for (let i = 1; i <= numInstallments; i++) {
+      const interest = round2(remaining * r);
+      let principalPart = round2(emiAmount - interest);
+      // Last installment: clear any rounding remainder
+      if (i === numInstallments) {
+        principalPart = round2(remaining);
+      }
+      remaining = round2(remaining - principalPart);
+      const emi = i === numInstallments ? round2(principalPart + interest) : emiAmount;
+      schedule.push({ principal: principalPart, interest, balance: remaining });
+      emiAmount = emi; // store for last
+    }
+  }
 
   const installments = [];
-  for (let i = 1; i <= numInstallments; i++) {
+  for (let i = 0; i < numInstallments; i++) {
     const dueDate = new Date(startDate);
-    dueDate.setMonth(dueDate.getMonth() + i);
+    dueDate.setMonth(dueDate.getMonth() + i + 1);
 
-    const amountDue = i === numInstallments ? lastAmount : baseAmount;
+    const item = schedule[i]!;
+    const amountDue = round2(item.principal + item.interest);
 
     const installment = await prisma.installment.create({
       data: {
         contractId,
-        installmentNumber: i,
+        installmentNumber: i + 1,
         dueDate,
         amountDue,
+        principalPortion: item.principal as unknown as Prisma.Decimal,
+        interestPortion: item.interest as unknown as Prisma.Decimal,
+        remainingBalance: item.balance as unknown as Prisma.Decimal,
         status: "pending",
       },
     });
