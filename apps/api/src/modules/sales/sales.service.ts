@@ -16,35 +16,40 @@ export async function createSale(input: CreateSaleInput, userId: string) {
       numInstallments: input.num_installments,
       interestRate: input.interest_rate,
       paymentMethod: input.payment_method,
+      financeCompanyName: input.finance_company_name ?? null,
+      financeReferenceNumber: input.finance_reference_number ?? null,
       soldByUserId: userId,
       notes: input.notes,
       status: "active",
     },
   });
 
-  // Generate installment schedule using flat-rate interest calculation
-  // Total interest = financeAmount * (interestRate / 100) * (numInstallments / 12)
+  // Generate installment schedule only for dealer-managed installment payments
+  // finance_company payment: finance company handles installments, not the dealer
   const installments = [];
-  const totalInterest =
-    financeAmount * (input.interest_rate / 100) * (input.num_installments / 12);
-  const totalRepayable = financeAmount + totalInterest;
-  const monthlyAmount = Math.round((totalRepayable / input.num_installments) * 100) / 100;
+  if (input.payment_method === "installment" && input.num_installments > 0) {
+    // Total interest = financeAmount * (interestRate / 100) * (numInstallments / 12)
+    const totalInterest =
+      financeAmount * (input.interest_rate / 100) * (input.num_installments / 12);
+    const totalRepayable = financeAmount + totalInterest;
+    const monthlyAmount = Math.round((totalRepayable / input.num_installments) * 100) / 100;
 
-  for (let i = 1; i <= input.num_installments; i++) {
-    const dueDate = new Date();
-    dueDate.setMonth(dueDate.getMonth() + i);
+    for (let i = 1; i <= input.num_installments; i++) {
+      const dueDate = new Date();
+      dueDate.setMonth(dueDate.getMonth() + i);
 
-    const installment = await prisma.installment.create({
-      data: {
-        saleId: sale.id,
-        installmentNumber: i,
-        dueDate,
-        amountDue: monthlyAmount,
-        status: "pending",
-      },
-    });
+      const installment = await prisma.installment.create({
+        data: {
+          saleId: sale.id,
+          installmentNumber: i,
+          dueDate,
+          amountDue: monthlyAmount,
+          status: "pending",
+        },
+      });
 
-    installments.push(installment);
+      installments.push(installment);
+    }
   }
 
   // Attach add-ons if provided
@@ -85,6 +90,7 @@ export async function createSale(input: CreateSaleInput, userId: string) {
 export async function listSales(options: {
   status?: string;
   customer_id?: string;
+  payment_method?: string;
   page?: number;
   limit?: number;
 }) {
@@ -100,6 +106,10 @@ export async function listSales(options: {
 
   if (options.customer_id) {
     where.customerId = options.customer_id;
+  }
+
+  if (options.payment_method) {
+    where.paymentMethod = options.payment_method;
   }
 
   const [data, total] = await Promise.all([

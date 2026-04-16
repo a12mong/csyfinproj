@@ -28,10 +28,11 @@ salesRouter.get("/", requireAuth, async (req, res) => {
   try {
     const status = req.query.status as string | undefined;
     const customer_id = req.query.customer_id as string | undefined;
+    const payment_method = req.query.payment_method as string | undefined;
     const page = req.query.page ? parseInt(req.query.page as string) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
 
-    const result = await listSales({ status, customer_id, page, limit });
+    const result = await listSales({ status, customer_id, payment_method, page, limit });
     res.json(result);
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };
