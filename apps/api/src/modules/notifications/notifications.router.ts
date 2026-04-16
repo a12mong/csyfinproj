@@ -5,6 +5,20 @@ import { requireAuth } from "../../middleware/auth.js";
 
 export const notificationsRouter: IRouter = Router();
 
+// GET /api/v1/notifications/line-status
+notificationsRouter.get("/line-status", requireAuth, (_req: Request, res: Response) => {
+  const hasAccessToken = !!process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const hasChannelSecret = !!process.env.LINE_CHANNEL_SECRET;
+  res.json({
+    data: {
+      configured: hasAccessToken && hasChannelSecret,
+      hasAccessToken,
+      hasChannelSecret,
+      webhookUrl: "/api/v1/webhooks/line",
+    },
+  });
+});
+
 // POST /api/v1/notifications/send-reminders
 notificationsRouter.post("/send-reminders", requireAuth, async (req: Request, res: Response) => {
   const parsed = sendRemindersBodySchema.safeParse(req.body);
