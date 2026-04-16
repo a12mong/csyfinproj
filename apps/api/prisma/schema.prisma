@@ -74,6 +74,13 @@ enum NotificationChannel {
   email
 }
 
+enum ContractStatus {
+  active
+  completed
+  defaulted
+  cancelled
+}
+
 enum NotificationStatus {
   sent
   failed
@@ -95,6 +102,7 @@ model User {
   verifiedPayments  Payment[] @relation("VerifiedBy")
   deliveryNotes     DeliveryNote[]
   permissions       UserPermission[]
+  createdContracts  Contract[] @relation("CreatedContracts")
 
   @@map("users")
 }
@@ -130,6 +138,7 @@ model Customer {
 
   sales             Sale[]
   notificationLogs  NotificationLog[]
+  contracts         Contract[]
 
   @@map("customers")
 }
@@ -176,11 +185,12 @@ model Sale {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  customer     Customer      @relation(fields: [customerId], references: [id])
-  motorcycle   Motorcycle    @relation(fields: [motorcycleId], references: [id])
-  soldBy       User          @relation(fields: [soldByUserId], references: [id])
-  installments Installment[]
-  saleAddons   SaleAddon[]
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  motorcycle    Motorcycle     @relation(fields: [motorcycleId], references: [id])
+  soldBy        User           @relation(fields: [soldByUserId], references: [id])
+  installments  Installment[]
+  saleAddons    SaleAddon[]
+  contractSales ContractSale[]
 
   @@index([customerId])
   @@map("sales")
@@ -188,7 +198,8 @@ model Sale {
 
 model Installment {
   id                String            @id @default(uuid()) @db.VarChar(36)
-  saleId            String            @map("sale_id") @db.VarChar(36)
+  saleId            String?           @map("sale_id") @db.VarChar(36)
+  contractId        String?           @map("contract_id") @db.VarChar(36)
   installmentNumber Int               @map("installment_number")
   dueDate           DateTime          @map("due_date") @db.Date
   amountDue         Decimal           @map("amount_due") @db.Decimal(12, 2)
@@ -198,32 +209,37 @@ model Installment {
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
-  sale             Sale              @relation(fields: [saleId], references: [id])
+  sale             Sale?             @relation(fields: [saleId], references: [id])
+  contract         Contract?         @relation(fields: [contractId], references: [id])
   payments         Payment[]
   notificationLogs NotificationLog[]
 
   @@index([saleId, dueDate])
+  @@index([contractId])
   @@index([status])
   @@map("installments")
 }
 
 model Payment {
-  id               String   @id @default(uuid()) @db.VarChar(36)
-  installmentId    String   @map("installment_id") @db.VarChar(36)
-  amount           Decimal  @db.Decimal(12, 2)
-  paymentDate      DateTime @map("payment_date") @db.Date
+  id               String         @id @default(uuid()) @db.VarChar(36)
+  installmentId    String?        @map("installment_id") @db.VarChar(36)
+  contractId       String?        @map("contract_id") @db.VarChar(36)
+  amount           Decimal        @db.Decimal(12, 2)
+  paymentDate      DateTime       @map("payment_date") @db.Date
   paymentChannel   PaymentChannel @default(cash) @map("payment_channel")
-  slipImageUrl     String?  @map("slip_image_url") @db.VarChar(500)
-  verified         Boolean  @default(false)
-  verifiedByUserId String?  @map("verified_by_user_id") @db.VarChar(36)
-  lineMessageId    String?  @map("line_message_id") @db.VarChar(255)
-  notes            String?  @db.Text
-  createdAt        DateTime @default(now()) @map("created_at")
+  slipImageUrl     String?        @map("slip_image_url") @db.VarChar(500)
+  verified         Boolean        @default(false)
+  verifiedByUserId String?        @map("verified_by_user_id") @db.VarChar(36)
+  lineMessageId    String?        @map("line_message_id") @db.VarChar(255)
+  notes            String?        @db.Text
+  createdAt        DateTime       @default(now()) @map("created_at")
 
-  installment Installment @relation(fields: [installmentId], references: [id])
-  verifiedBy  User?       @relation("VerifiedBy", fields: [verifiedByUserId], references: [id])
+  installment Installment? @relation(fields: [installmentId], references: [id])
+  contract    Contract?    @relation(fields: [contractId], references: [id])
+  verifiedBy  User?        @relation("VerifiedBy", fields: [verifiedByUserId], references: [id])
 
   @@index([installmentId])
+  @@index([contractId])
   @@map("payments")
 }
 
@@ -303,4 +319,46 @@ model DeliveryNoteItem {
 
   @@index([deliveryNoteId])
   @@map("delivery_note_items")
+}
+
+model Contract {
+  id              String         @id @default(uuid()) @db.VarChar(36)
+  contractNumber  String         @unique @map("contract_number") @db.VarChar(50)
+  customerId      String         @map("customer_id") @db.VarChar(36)
+  totalPrincipal  Decimal        @map("total_principal") @db.Decimal(12, 2)
+  totalInterest   Decimal        @map("total_interest") @db.Decimal(12, 2)
+  totalAmount     Decimal        @map("total_amount") @db.Decimal(12, 2)
+  numInstallments Int            @map("num_installments")
+  interestRate    Decimal        @map("interest_rate") @db.Decimal(5, 2)
+  startDate       DateTime       @map("start_date") @db.Date
+  status          ContractStatus @default(active)
+  notes           String?        @db.Text
+  createdByUserId String         @map("created_by_user_id") @db.VarChar(36)
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  createdBy     User           @relation("CreatedContracts", fields: [createdByUserId], references: [id])
+  contractSales ContractSale[]
+  installments  Installment[]
+  payments      Payment[]
+
+  @@index([customerId])
+  @@index([status])
+  @@map("contracts")
+}
+
+model ContractSale {
+  id         String   @id @default(uuid()) @db.VarChar(36)
+  contractId String   @map("contract_id") @db.VarChar(36)
+  saleId     String   @map("sale_id") @db.VarChar(36)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+  sale     Sale     @relation(fields: [saleId], references: [id])
+
+  @@unique([contractId, saleId])
+  @@index([contractId])
+  @@index([saleId])
+  @@map("contract_sales")
 }

@@ -2,13 +2,16 @@ import { prisma } from "../../lib/prisma.js";
 import type { CreatePaymentInput, VerifyPaymentInput, ListPaymentsQuery } from "./payments.schemas.js";
 
 export async function listPayments(query: ListPaymentsQuery) {
-  const { installment_id, payment_channel, verified, page, limit } = query;
+  const { installment_id, contract_id, payment_channel, verified, page, limit } = query;
   const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};
 
   if (installment_id) {
     where.installmentId = installment_id;
+  }
+  if (contract_id) {
+    where.contractId = contract_id;
   }
   if (payment_channel) {
     where.paymentChannel = payment_channel;

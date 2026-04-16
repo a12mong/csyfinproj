@@ -18,6 +18,7 @@ export const verifyPaymentSchema = z.object({
 
 export const listPaymentsQuerySchema = z.object({
   installment_id: z.string().uuid().optional(),
+  contract_id: z.string().uuid().optional(),
   payment_channel: paymentChannelEnum.optional(),
   verified: z
     .string()

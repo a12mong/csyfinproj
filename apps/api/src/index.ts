@@ -13,6 +13,7 @@ import { deliveryNotesRouter } from "./modules/grn/delivery-notes.router.js";
 import { lineWebhookRouter } from "./modules/webhooks/line-webhook.router.js";
 import { usersRouter } from "./modules/users/users.router.js";
 import { permissionsRouter } from "./modules/permissions/permissions.router.js";
+import { contractsRouter } from "./modules/contracts/contracts.router.js";
 
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
@@ -45,6 +46,7 @@ app.use("/api/v1/notifications", notificationsRouter);
 app.use("/api/v1/delivery-notes", deliveryNotesRouter);
 app.use("/api/v1/users", usersRouter);
 app.use("/api/v1", permissionsRouter);
+app.use("/api/v1/contracts", contractsRouter);
 
 app.listen(PORT, () => {
   console.log(`API server running on http://localhost:${PORT}`);

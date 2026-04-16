@@ -29,6 +29,7 @@ export async function sendReminders(input: SendRemindersInput) {
   const overdueInstallments = await prisma.installment.findMany({
     where: {
       status: "overdue",
+      saleId: { not: null },
       ...(input.customer_id
         ? { sale: { customerId: input.customer_id } }
         : {}),
@@ -44,6 +45,7 @@ export async function sendReminders(input: SendRemindersInput) {
   let failed = 0;
 
   for (const installment of overdueInstallments) {
+    if (!installment.sale) continue;
     const customer = installment.sale.customer;
     const message =
       `แจ้งเตือนค่างวด: ลูกค้า ${customer.name} มียอดค้างชำระ ` +
