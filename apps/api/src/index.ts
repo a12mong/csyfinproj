@@ -1,5 +1,6 @@
 import express, { type Application } from "express";
 import cors from "cors";
+import { resolve } from "path";
 import { authRouter } from "./modules/auth/auth.router.js";
 import { motorcyclesRouter } from "./modules/inventory/motorcycles.router.js";
 import { customersRouter } from "./modules/customers/customers.router.js";
@@ -13,6 +14,10 @@ const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 app.use(express.json());
+
+// Serve uploaded slip images
+const UPLOAD_DIR = process.env.UPLOAD_DIR ?? "./uploads";
+app.use("/uploads", express.static(resolve(UPLOAD_DIR)));
 
 // Health check
 app.get("/api/health", (_req, res) => {

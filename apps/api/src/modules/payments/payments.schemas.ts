@@ -1,10 +1,10 @@
 import { z } from "zod";
 
-export const createPaymentSchema = z.object({
+// Multipart/form-data body schema — amount comes in as string, coerce to number
+export const createPaymentBodySchema = z.object({
   installment_id: z.string().uuid(),
-  amount: z.number().positive(),
+  amount: z.coerce.number().positive(),
   payment_date: z.string().date(),
-  slip_image: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -13,5 +13,7 @@ export const verifyPaymentSchema = z.object({
   notes: z.string().optional(),
 });
 
-export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
+export type CreatePaymentInput = z.infer<typeof createPaymentBodySchema> & {
+  slip_image?: string;
+};
 export type VerifyPaymentInput = z.infer<typeof verifyPaymentSchema>;
