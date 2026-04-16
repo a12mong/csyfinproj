@@ -36,6 +36,12 @@ enum PaymentMethod {
   finance_company
 }
 
+enum CustomerType {
+  personal
+  individual
+  finance
+}
+
 enum PaymentChannel {
   cash
   bank_transfer
@@ -132,17 +138,20 @@ model UserPermission {
 }
 
 model Customer {
-  id           String   @id @default(uuid()) @db.VarChar(36)
-  name         String   @db.VarChar(255)
-  phone        String   @db.VarChar(20)
-  email        String?  @db.VarChar(255)
-  lineId       String?  @map("line_id") @db.VarChar(100)
-  address      String?  @db.Text
-  idCardNumber String   @unique @map("id_card_number") @db.VarChar(13)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id           String       @id @default(uuid()) @db.VarChar(36)
+  name         String       @db.VarChar(255)
+  phone        String       @db.VarChar(20)
+  email        String?      @db.VarChar(255)
+  lineId       String?      @map("line_id") @db.VarChar(100)
+  address      String?      @db.Text
+  idCardNumber String       @unique @map("id_card_number") @db.VarChar(13)
+  type         CustomerType @default(personal)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
   sales             Sale[]
+  invoiceSales      Sale[] @relation("InvoiceCustomer")
+  buyerSales        Sale[] @relation("BuyerCustomer")
   notificationLogs  NotificationLog[]
   contracts         Contract[]
 
@@ -175,6 +184,8 @@ model Motorcycle {
 model Sale {
   id              String        @id @default(uuid()) @db.VarChar(36)
   customerId      String        @map("customer_id") @db.VarChar(36)
+  invoiceCustomerId String?      @map("invoice_customer_id") @db.VarChar(36)
+  buyerCustomerId String?        @map("buyer_customer_id") @db.VarChar(36)
   motorcycleId    String        @map("motorcycle_id") @db.VarChar(36)
   saleDate        DateTime      @map("sale_date") @db.Date
   totalPrice      Decimal       @map("total_price") @db.Decimal(12, 2)
@@ -193,6 +204,8 @@ model Sale {
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
   customer              Customer               @relation(fields: [customerId], references: [id])
+  invoiceCustomer       Customer?              @relation("InvoiceCustomer", fields: [invoiceCustomerId], references: [id])
+  buyerCustomer         Customer?              @relation("BuyerCustomer", fields: [buyerCustomerId], references: [id])
   motorcycle            Motorcycle             @relation(fields: [motorcycleId], references: [id])
   soldBy                User                   @relation(fields: [soldByUserId], references: [id])
   financialInstitution  FinancialInstitution?  @relation(fields: [financialInstitutionId], references: [id])
@@ -201,6 +214,8 @@ model Sale {
   contractSales         ContractSale[]
 
   @@index([customerId])
+  @@index([invoiceCustomerId])
+  @@index([buyerCustomerId])
   @@index([financialInstitutionId])
   @@map("sales")
 }
