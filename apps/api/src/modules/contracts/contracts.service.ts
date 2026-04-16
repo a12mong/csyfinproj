@@ -66,6 +66,7 @@ export async function createContract(input: CreateContractInput, userId: string)
           where: { id: { in: input.sale_ids } },
           include: {
             customer: true,
+            invoiceCustomer: true,
             financialInstitution: true,
           },
         })
@@ -91,7 +92,12 @@ export async function createContract(input: CreateContractInput, userId: string)
 
   const contractNumber = await generateContractNumber();
 
-  // For finance_company sales, derive the financial institution from linked sales
+  // For installment sales (new 2-party workflow: CSY + customer)
+  const installmentSale = linkedSales.find(
+    (s) => s.paymentMethod === "installment"
+  );
+
+  // For finance_company sales (legacy 3-party workflow), kept for backward compat
   const financeCompanySale = linkedSales.find(
     (s) => s.paymentMethod === "finance_company" && s.financialInstitutionId
   );
@@ -126,8 +132,47 @@ export async function createContract(input: CreateContractInput, userId: string)
     );
   }
 
-  // Auto-create ContractParty records for finance_company sales (3-party transaction)
-  if (financeCompanySale) {
+  // Auto-create ContractParty records based on payment method
+  if (installmentSale) {
+    // 2-party installment contract: seller (CSY as creditor) + buyer (customer as debtor)
+    const parties: Array<{
+      contractId: string;
+      role: "owner" | "buyer" | "seller";
+      partyName: string;
+      partyRefId?: string;
+      partyRefType?: string;
+    }> = [
+      // Seller/Creditor: the store (CSY)
+      {
+        contractId: contract.id,
+        role: "seller",
+        partyName: "ร้านค้า (CSY)",
+        partyRefType: "system",
+      },
+      // Buyer/Debtor: the customer making the installment contract with CSY
+      {
+        contractId: contract.id,
+        role: "buyer",
+        partyName: installmentSale.customer.name,
+        partyRefId: installmentSale.customerId,
+        partyRefType: "customer",
+      },
+    ];
+
+    // If the installment sale has a finance-type invoice customer, include them as owner
+    if (installmentSale.invoiceCustomer?.type === "finance") {
+      parties.push({
+        contractId: contract.id,
+        role: "owner",
+        partyName: installmentSale.invoiceCustomer.name,
+        partyRefId: installmentSale.invoiceCustomerId!,
+        partyRefType: "customer",
+      });
+    }
+
+    await Promise.all(parties.map((p) => prisma.contractParty.create({ data: p })));
+  } else if (financeCompanySale) {
+    // Legacy 3-party finance_company contract: owner (financial institution) + buyer (customer) + seller (CSY)
     const parties: Array<{
       contractId: string;
       role: "owner" | "buyer" | "seller";
