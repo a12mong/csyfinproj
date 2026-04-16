@@ -425,6 +425,156 @@ describe("Sales Integration Tests", () => {
     });
   });
 
+  describe("Dual-customer support (TDS-66)", () => {
+    it("should create a cash sale using invoice_customer_id (new field)", async () => {
+      const user = await factories.createAdmin();
+      const customer = await factories.createCustomer({ type: "personal" });
+      const motorcycle = await factories.createMotorcycle();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const response = await makeRequest("POST", "/api/v1/sales", token, {
+        invoice_customer_id: customer.id,
+        motorcycle_id: motorcycle.id,
+        total_price: 25000,
+        down_payment: 25000,
+        payment_method: "cash",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await jsonResponse<{ data: { invoiceCustomerId: string; buyerCustomerId: string | null } }>(response);
+      expect(data.data.invoiceCustomerId).toBe(customer.id);
+      expect(data.data.buyerCustomerId).toBeNull();
+    });
+
+    it("should reject cash sale with finance invoice customer and no buyer_customer_id", async () => {
+      const user = await factories.createAdmin();
+      const financeCustomer = await factories.createCustomer({ type: "finance" });
+      const motorcycle = await factories.createMotorcycle();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const response = await makeRequest("POST", "/api/v1/sales", token, {
+        invoice_customer_id: financeCustomer.id,
+        motorcycle_id: motorcycle.id,
+        total_price: 25000,
+        down_payment: 25000,
+        payment_method: "cash",
+      });
+
+      expect(response.status).toBe(400);
+      const body = await jsonResponse<{ error: string }>(response);
+      expect(body.error).toContain("buyer_customer_id");
+    });
+
+    it("should create a cash sale with finance invoice customer and personal buyer", async () => {
+      const user = await factories.createAdmin();
+      const financeCustomer = await factories.createCustomer({ type: "finance" });
+      const personalBuyer = await factories.createCustomer({ type: "personal" });
+      const motorcycle = await factories.createMotorcycle();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const response = await makeRequest("POST", "/api/v1/sales", token, {
+        invoice_customer_id: financeCustomer.id,
+        buyer_customer_id: personalBuyer.id,
+        motorcycle_id: motorcycle.id,
+        total_price: 25000,
+        down_payment: 25000,
+        payment_method: "cash",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await jsonResponse<{ data: { invoiceCustomerId: string; buyerCustomerId: string } }>(response);
+      expect(data.data.invoiceCustomerId).toBe(financeCustomer.id);
+      expect(data.data.buyerCustomerId).toBe(personalBuyer.id);
+    });
+
+    it("should create a cash sale with finance invoice customer and individual buyer", async () => {
+      const user = await factories.createAdmin();
+      const financeCustomer = await factories.createCustomer({ type: "finance" });
+      const individualBuyer = await factories.createCustomer({ type: "individual" });
+      const motorcycle = await factories.createMotorcycle();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const response = await makeRequest("POST", "/api/v1/sales", token, {
+        invoice_customer_id: financeCustomer.id,
+        buyer_customer_id: individualBuyer.id,
+        motorcycle_id: motorcycle.id,
+        total_price: 25000,
+        down_payment: 25000,
+        payment_method: "cash",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await jsonResponse<{ data: { buyerCustomerId: string } }>(response);
+      expect(data.data.buyerCustomerId).toBe(individualBuyer.id);
+    });
+
+    it("should reject cash sale with finance invoice customer and finance buyer", async () => {
+      const user = await factories.createAdmin();
+      const financeCustomer = await factories.createCustomer({ type: "finance" });
+      const financeBuyer = await factories.createCustomer({ type: "finance" });
+      const motorcycle = await factories.createMotorcycle();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const response = await makeRequest("POST", "/api/v1/sales", token, {
+        invoice_customer_id: financeCustomer.id,
+        buyer_customer_id: financeBuyer.id,
+        motorcycle_id: motorcycle.id,
+        total_price: 25000,
+        down_payment: 25000,
+        payment_method: "cash",
+      });
+
+      expect(response.status).toBe(400);
+      const body = await jsonResponse<{ error: string }>(response);
+      expect(body.error).toContain("personal or individual");
+    });
+
+    it("should return invoiceCustomer and buyerCustomer with type in sale detail", async () => {
+      const user = await factories.createAdmin();
+      const financeCustomer = await factories.createCustomer({ type: "finance" });
+      const personalBuyer = await factories.createCustomer({ type: "personal" });
+      const motorcycle = await factories.createMotorcycle();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const createResponse = await makeRequest("POST", "/api/v1/sales", token, {
+        invoice_customer_id: financeCustomer.id,
+        buyer_customer_id: personalBuyer.id,
+        motorcycle_id: motorcycle.id,
+        total_price: 25000,
+        down_payment: 25000,
+        payment_method: "cash",
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await jsonResponse<{ data: { id: string } }>(createResponse);
+
+      const response = await makeRequest("GET", `/api/v1/sales/${created.data.id}`, token);
+      expect(response.status).toBe(200);
+      const data = await jsonResponse<{
+        data: {
+          invoiceCustomer: { id: string; type: string };
+          buyerCustomer: { id: string; type: string };
+        };
+      }>(response);
+      expect(data.data.invoiceCustomer.type).toBe("finance");
+      expect(data.data.buyerCustomer.type).toBe("personal");
+    });
+
+    it("should reject sale creation with no customer id at all", async () => {
+      const user = await factories.createAdmin();
+      const motorcycle = await factories.createMotorcycle();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const response = await makeRequest("POST", "/api/v1/sales", token, {
+        motorcycle_id: motorcycle.id,
+        total_price: 25000,
+        down_payment: 25000,
+        payment_method: "cash",
+      });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
   describe("Sale Status Transitions", () => {
     it("should transition sale from active to completed", async () => {
       const user = await factories.createAdmin();

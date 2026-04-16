@@ -20,6 +20,7 @@ export async function createCustomer(input: CreateCustomerInput) {
       email: input.email,
       lineId: input.line_id,
       address: input.address,
+      ...(input.type && { type: input.type }),
     },
   });
 
@@ -28,6 +29,7 @@ export async function createCustomer(input: CreateCustomerInput) {
 
 export async function listCustomers(options: {
   search?: string;
+  type?: string;
   page?: number;
   limit?: number;
 }) {
@@ -43,6 +45,13 @@ export async function listCustomers(options: {
       { phone: { contains: options.search } },
       { idCardNumber: { contains: options.search } },
     ];
+  }
+
+  if (options.type) {
+    const types = options.type.split(",").map((t) => t.trim()).filter(Boolean);
+    if (types.length > 0) {
+      where.type = { in: types };
+    }
   }
 
   const [data, total] = await Promise.all([
@@ -115,6 +124,7 @@ export async function updateCustomer(id: string, input: UpdateCustomerInput) {
       ...(input.email && { email: input.email }),
       ...(input.line_id && { lineId: input.line_id }),
       ...(input.address && { address: input.address }),
+      ...(input.type && { type: input.type }),
     },
   });
 

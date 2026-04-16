@@ -2,13 +2,47 @@ import { prisma } from "../../lib/prisma.js";
 import type { CreateSaleInput, UpdateSaleInput } from "./sales.schemas.js";
 
 export async function createSale(input: CreateSaleInput, userId: string) {
+  const effectiveInvoiceCustomerId = input.invoice_customer_id ?? input.customer_id!;
+
+  // Load invoice customer to determine type for conditional validation
+  const invoiceCustomer = await prisma.customer.findUnique({
+    where: { id: effectiveInvoiceCustomerId },
+  });
+  if (!invoiceCustomer) {
+    throw Object.assign(new Error("Invoice customer not found"), { statusCode: 404 });
+  }
+
+  // When payment is cash and invoice customer is a finance company, a personal/individual buyer is required
+  if (input.payment_method === "cash" && invoiceCustomer.type === "finance") {
+    if (!input.buyer_customer_id) {
+      throw Object.assign(
+        new Error("buyer_customer_id is required when payment_method is cash and invoice customer type is finance"),
+        { statusCode: 400 }
+      );
+    }
+    const buyerCustomer = await prisma.customer.findUnique({
+      where: { id: input.buyer_customer_id },
+    });
+    if (!buyerCustomer) {
+      throw Object.assign(new Error("Buyer customer not found"), { statusCode: 404 });
+    }
+    if (buyerCustomer.type !== "personal" && buyerCustomer.type !== "individual") {
+      throw Object.assign(
+        new Error("Buyer customer must be type personal or individual"),
+        { statusCode: 400 }
+      );
+    }
+  }
+
   const financeAmount = input.total_price - input.down_payment;
 
   // Create the sale — installment details (count, interest) are specified later
   // when linking this sale to a contract
   const sale = await prisma.sale.create({
     data: {
-      customerId: input.customer_id,
+      customerId: effectiveInvoiceCustomerId,
+      invoiceCustomerId: effectiveInvoiceCustomerId,
+      buyerCustomerId: input.buyer_customer_id ?? null,
       motorcycleId: input.motorcycle_id,
       saleDate: new Date(),
       totalPrice: input.total_price,
@@ -91,7 +125,12 @@ export async function listSales(options: {
       where,
       skip,
       take: limit,
-      include: { customer: true, motorcycle: true },
+      include: {
+        customer: { select: { id: true, name: true, phone: true, type: true } },
+        invoiceCustomer: { select: { id: true, name: true, phone: true, type: true } },
+        buyerCustomer: { select: { id: true, name: true, phone: true, type: true } },
+        motorcycle: true,
+      },
       orderBy: { createdAt: "desc" },
     }),
     prisma.sale.count({ where }),
@@ -104,7 +143,9 @@ export async function getSaleDetail(id: string) {
   const sale = await prisma.sale.findUnique({
     where: { id },
     include: {
-      customer: true,
+      customer: { select: { id: true, name: true, phone: true, type: true } },
+      invoiceCustomer: { select: { id: true, name: true, phone: true, type: true } },
+      buyerCustomer: { select: { id: true, name: true, phone: true, type: true } },
       motorcycle: true,
       installments: { orderBy: { installmentNumber: "asc" } },
       saleAddons: { include: { addon: true } },
@@ -139,7 +180,9 @@ export async function updateSale(id: string, input: UpdateSaleInput) {
       ...(input.notes && { notes: input.notes }),
     },
     include: {
-      customer: true,
+      customer: { select: { id: true, name: true, phone: true, type: true } },
+      invoiceCustomer: { select: { id: true, name: true, phone: true, type: true } },
+      buyerCustomer: { select: { id: true, name: true, phone: true, type: true } },
       motorcycle: true,
       installments: { orderBy: { installmentNumber: "asc" } },
       saleAddons: { include: { addon: true } },

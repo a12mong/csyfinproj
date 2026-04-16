@@ -26,10 +26,11 @@ customersRouter.post("/", requireAuth, async (req, res) => {
 customersRouter.get("/", requireAuth, async (req, res) => {
   try {
     const search = req.query.search as string | undefined;
+    const type = req.query.type as string | undefined;
     const page = req.query.page ? parseInt(req.query.page as string) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
 
-    const result = await listCustomers({ search, page, limit });
+    const result = await listCustomers({ search, type, page, limit });
     res.json(result);
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };

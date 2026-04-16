@@ -71,7 +71,85 @@ describe("Customers Integration Tests", () => {
     });
   });
 
+  describe("POST /api/v1/customers — with type (TDS-66)", () => {
+    it("should create a customer with type=finance", async () => {
+      const user = await factories.createAdmin();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const response = await makeRequest("POST", "/api/v1/customers", token, {
+        name: "Finance Corp",
+        phone: "0899999999",
+        id_card_number: `${Date.now()}`.slice(-13).padStart(13, "0"),
+        type: "finance",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await jsonResponse<{ data: { type: string } }>(response);
+      expect(data.data.type).toBe("finance");
+    });
+
+    it("should create a customer with type=individual", async () => {
+      const user = await factories.createAdmin();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const response = await makeRequest("POST", "/api/v1/customers", token, {
+        name: "Individual Co",
+        phone: "0888888888",
+        id_card_number: `${Date.now()}`.slice(-13).padStart(13, "0"),
+        type: "individual",
+      });
+
+      expect(response.status).toBe(201);
+      const data = await jsonResponse<{ data: { type: string } }>(response);
+      expect(data.data.type).toBe("individual");
+    });
+
+    it("should default type to personal when not specified", async () => {
+      const user = await factories.createAdmin();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      const response = await makeRequest("POST", "/api/v1/customers", token, {
+        name: "No Type Customer",
+        phone: "0877777777",
+        id_card_number: `${Date.now()}`.slice(-13).padStart(13, "0"),
+      });
+
+      expect(response.status).toBe(201);
+      const data = await jsonResponse<{ data: { type: string } }>(response);
+      expect(data.data.type).toBe("personal");
+    });
+  });
+
   describe("GET /api/v1/customers", () => {
+    it("should filter customers by type=finance (TDS-66)", async () => {
+      const user = await factories.createAdmin();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      await factories.createCustomer({ type: "finance" });
+      await factories.createCustomer({ type: "personal" });
+
+      const response = await makeRequest("GET", "/api/v1/customers?type=finance", token);
+
+      expect(response.status).toBe(200);
+      const data = await jsonResponse<{ data: Array<{ type: string }>; total: number }>(response);
+      expect(data.data.every((c) => c.type === "finance")).toBe(true);
+    });
+
+    it("should filter customers by multiple types (TDS-66)", async () => {
+      const user = await factories.createAdmin();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+
+      await factories.createCustomer({ type: "personal" });
+      await factories.createCustomer({ type: "individual" });
+      await factories.createCustomer({ type: "finance" });
+
+      const response = await makeRequest("GET", "/api/v1/customers?type=personal,individual", token);
+
+      expect(response.status).toBe(200);
+      const data = await jsonResponse<{ data: Array<{ type: string }> }>(response);
+      expect(data.data.every((c) => c.type === "personal" || c.type === "individual")).toBe(true);
+    });
+
     it("should list customers with pagination", async () => {
       const user = await factories.createAdmin();
       const token = generateToken({ email: user.email, role: "admin" }, user.id);

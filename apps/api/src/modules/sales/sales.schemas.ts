@@ -2,7 +2,9 @@ import { z } from "zod";
 
 export const createSaleSchema = z
   .object({
-    customer_id: z.string().uuid(),
+    customer_id: z.string().uuid().optional(), // backward compat alias for invoice_customer_id
+    invoice_customer_id: z.string().uuid().optional(),
+    buyer_customer_id: z.string().uuid().optional(),
     motorcycle_id: z.string().uuid(),
     total_price: z.number().positive(),
     down_payment: z.number().nonnegative(),
@@ -14,6 +16,13 @@ export const createSaleSchema = z
     notes: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    if (!data.invoice_customer_id && !data.customer_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "invoice_customer_id is required",
+        path: ["invoice_customer_id"],
+      });
+    }
     if (data.payment_method === "finance_company" && !data.finance_company_name) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
