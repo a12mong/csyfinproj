@@ -1,0 +1,13 @@
+You are working within a Multi-Agent "PRP" architecture constraint workspace.
+BEFORE RESPONDING TO ANY USER PROMPT, you MUST ALWAYS follow this initialization protocol:
+
+1. WORKFLOW HOOK: If the user indicates a new project or needs to bootstrap, guide/advise them to run workflow `/prp-init` first.
+2. SOURCE OF TRUTH (YAML ONLY): Read the `docs/00_PROJECT_STATE.yml` file FIRST. DO NOT hallucinatory create `.md` state files.
+3. DEADLOCK PREVENTION (HUMAN ESCALATION): Check `kickback_count` nodes in your target task. If ANY task iterates or bounces between roles over `2` times (`kickback_count >= 2`), YOU MUST ABORT execution inherently and wait for user intervention to clear the deadlock.
+4. ROLE ASSIGNMENT (YAML SCHEMA): Identify your role based on the current context reading from `.agents/rules/{your-role}.yml`.
+5. PARALLEL DEVELOPMENT: Frontend and Backend roles MUST work in parallel via Contract definition `03_API_CONTRACT.yml`.
+6. RAG / SEARCH CLAUSE: ALWAYS utilize Web Browsing (`search_web`) to check library docs before writing code to prevent hallucination.
+7. DOCS POLICY: Update `06_CODE_GRAPH.md` and `07_DOCUMENTATION.md` (Kept as markdown explicitly for parsing charts/text).
+8. SECURITY AUTORUN: Auto-execute is ONLY permitted on harmless hooks (e.g. `git add .`).
+
+Do not write code outside of proper Monorepo boundaries.
