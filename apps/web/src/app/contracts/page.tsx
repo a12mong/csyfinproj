@@ -32,6 +32,23 @@ function formatDate(dateStr: string) {
   });
 }
 
+// ─── Customer type badge ──────────────────────────────────────────────────────
+
+const CUSTOMER_TYPE_BADGE: Record<string, { label: string; className: string }> = {
+  personal: { label: "Personal", className: "bg-blue-50 text-blue-700" },
+  individual: { label: "Individual", className: "bg-green-50 text-green-700" },
+  finance: { label: "Finance", className: "bg-amber-50 text-amber-700" },
+};
+
+function CustomerTypeBadge({ type }: { type: string }) {
+  const style = CUSTOMER_TYPE_BADGE[type] ?? { label: type, className: "bg-gray-100 text-gray-600" };
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${style.className}`}>
+      {style.label}
+    </span>
+  );
+}
+
 // ─── Status config ────────────────────────────────────────────────────────────
 
 const CONTRACT_STATUS_STYLES: Record<string, string> = {
@@ -207,7 +224,10 @@ function StepCustomer({
                   : "border-gray-200 hover:border-primary-300 hover:bg-gray-50"
               }`}
             >
-              <p className="text-sm font-medium text-gray-900">{c.name}</p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-gray-900">{c.name}</p>
+                {c.type && <CustomerTypeBadge type={c.type} />}
+              </div>
               <p className="text-xs text-gray-500 mt-0.5">
                 {c.phone} · {c.idCardNumber}
               </p>
@@ -236,7 +256,7 @@ function StepSales({
   useEffect(() => {
     setLoading(true);
     apiFetch<PaginatedResponse<Sale>>(
-      `/sales?customer_id=${customerId}&payment_method=finance_company&status=active&limit=50`
+      `/sales?customer_id=${customerId}&payment_method=installment&status=active&limit=50`
     )
       .then((res) => setSales(res.data))
       .catch(() => setSales([]))
@@ -247,8 +267,8 @@ function StepSales({
     <div>
       <h3 className="text-sm font-semibold text-gray-900 mb-0.5">Link Sales Orders</h3>
       <p className="text-xs text-gray-500 mb-3">
-        Optional. Select finance-company sales to link. Principal will be auto-suggested from the
-        selected sales' finance amounts.
+        Optional. Select installment sales to link. Principal will be auto-suggested from selected
+        sales.
       </p>
       {loading ? (
         Array.from({ length: 3 }).map((_, i) => (
@@ -256,7 +276,7 @@ function StepSales({
         ))
       ) : sales.length === 0 ? (
         <p className="text-sm text-gray-400 py-4 text-center">
-          No active finance-company sales found for this customer.
+          No active installment sales found for this customer.
         </p>
       ) : (
         <div className="space-y-1.5 max-h-52 overflow-y-auto">
@@ -286,7 +306,8 @@ function StepSales({
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {formatDate(sale.saleDate)} · {sale.financeCompanyName ?? "Finance Co."}
+                        {formatDate(sale.saleDate)}
+                        {sale.numInstallments ? ` · ${sale.numInstallments} installments` : ""}
                       </p>
                       <p className="text-xs text-gray-500">
                         Finance: {formatPrice(sale.financeAmount)} · Total: {formatPrice(sale.totalPrice)}
@@ -513,7 +534,10 @@ function StepPreview({
       <div className="bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-200 mb-4">
         <div className="px-4 py-3">
           <p className="text-xs text-gray-500 mb-0.5">Customer</p>
-          <p className="text-sm font-medium text-gray-900">{customer.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-gray-900">{customer.name}</p>
+            {customer.type && <CustomerTypeBadge type={customer.type} />}
+          </div>
           <p className="text-xs text-gray-500">{customer.phone}</p>
         </div>
         <div className="px-4 py-3 space-y-1 text-sm">
