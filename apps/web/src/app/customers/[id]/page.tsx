@@ -43,6 +43,8 @@ export default function CustomerDetailPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
+  const [windowOrigin, setWindowOrigin] = useState("http://localhost:3000");
 
   useEffect(() => {
     async function fetchData() {
@@ -63,6 +65,64 @@ export default function CustomerDetailPage() {
     }
     fetchData();
   }, [params.id]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setWindowOrigin(window.location.origin);
+    }
+  }, []);
+
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout;
+    if (customer && !customer.isLineLinked) {
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await apiFetch<{ isLineLinked: boolean; lineId: string | null }>(
+            `/customers/${params.id}/link-status`
+          );
+          if (res.isLineLinked) {
+            setCustomer((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    isLineLinked: true,
+                    lineId: res.lineId ?? undefined,
+                  }
+                : null
+            );
+          }
+        } catch (err) {
+          console.error("Error polling LINE link status:", err);
+        }
+      }, 3000);
+    }
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [customer?.isLineLinked, params.id]);
+
+  async function handleUnlink() {
+    if (!confirm("Are you sure you want to disconnect this customer's LINE account?")) {
+      return;
+    }
+    setUnlinking(true);
+    try {
+      await apiFetch(`/customers/${params.id}/unlink-line`, { method: "POST" });
+      setCustomer((prev) =>
+        prev
+          ? {
+              ...prev,
+              isLineLinked: false,
+              lineId: undefined,
+            }
+          : null
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to disconnect LINE account");
+    } finally {
+      setUnlinking(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -160,6 +220,83 @@ export default function CustomerDetailPage() {
               <span className="text-sm text-gray-900">{value}</span>
             </div>
           ))}
+        </div>
+
+        {/* LINE Connection Card */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6 animate-fadeIn">
+          <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#06C755] text-white text-[10px] font-black">LINE</span>
+            LINE Account Integration
+          </h2>
+          
+          {customer.isLineLinked ? (
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-[#06C755] shrink-0">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-800">Connected</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 animate-pulse">
+                    Active
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  This customer's record is successfully linked to their LINE account.
+                </p>
+                <div className="mt-2 font-mono text-xs text-gray-600 bg-gray-50 rounded-lg p-2 max-w-md truncate flex justify-between items-center">
+                  <span className="truncate flex-1">LINE ID: {customer.lineId}</span>
+                  <button
+                    onClick={handleUnlink}
+                    disabled={unlinking}
+                    className="text-red-600 hover:text-red-700 font-semibold text-xs ml-4 shrink-0 transition-colors"
+                  >
+                    {unlinking ? "Disconnecting..." : "Disconnect"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-800">Not Connected</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                    Pending Setup
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Link this customer's LINE account to allow them to receive payment notifications, installment reminders, and automatically upload payment slips via our LINE Official Account.
+                </p>
+                <div className="pt-2">
+                  <p className="text-xs font-medium text-gray-600 mb-1">Testing URL (Click to simulate):</p>
+                  <a
+                    href={`/customers/link-line/${customer.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block text-xs font-medium text-primary-600 hover:underline break-all bg-primary-50 p-2 rounded-lg transition-all"
+                  >
+                    {`${windowOrigin}/customers/link-line/${customer.id}`}
+                  </a>
+                </div>
+              </div>
+              
+              <div className="shrink-0 flex flex-col items-center p-3 border border-gray-100 bg-gray-50/50 rounded-xl text-center space-y-2">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                    `${windowOrigin}/customers/link-line/${customer.id}`
+                  )}`}
+                  alt="LINE Link QR Code"
+                  className="w-[150px] h-[150px] bg-white rounded-lg shadow-sm border border-gray-100"
+                />
+                <p className="text-[10px] text-gray-400 font-medium max-w-[150px]">
+                  Scan to link LINE account
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Sales History */}

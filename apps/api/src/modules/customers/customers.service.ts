@@ -103,6 +103,9 @@ export async function getCustomerDetail(id: string) {
       total_debt: totalDebt,
       paid_amount: paidAmount,
       overdue_count: overdueCount,
+      totalDebt,
+      paidAmount,
+      overdueCount,
     },
   };
 }
@@ -125,6 +128,46 @@ export async function updateCustomer(id: string, input: UpdateCustomerInput) {
       ...(input.line_id && { lineId: input.line_id }),
       ...(input.address && { address: input.address }),
       ...(input.type && { type: input.type }),
+    },
+  });
+
+  return { data: updated };
+}
+
+export async function linkCustomerLine(id: string, lineId: string) {
+  const customer = await prisma.customer.findUnique({
+    where: { id },
+  });
+
+  if (!customer) {
+    throw Object.assign(new Error("Customer not found"), { statusCode: 404 });
+  }
+
+  const updated = await prisma.customer.update({
+    where: { id },
+    data: {
+      lineId,
+      isLineLinked: true,
+    },
+  });
+
+  return { data: updated };
+}
+
+export async function unlinkCustomerLine(id: string) {
+  const customer = await prisma.customer.findUnique({
+    where: { id },
+  });
+
+  if (!customer) {
+    throw Object.assign(new Error("Customer not found"), { statusCode: 404 });
+  }
+
+  const updated = await prisma.customer.update({
+    where: { id },
+    data: {
+      lineId: null,
+      isLineLinked: false,
     },
   });
 

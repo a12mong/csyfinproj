@@ -248,4 +248,50 @@ describe("Customers Integration Tests", () => {
       expect(data.data.address).toBe("456 Oak St");
     });
   });
+
+  describe("GET /api/v1/customers/:id/link-status (public)", () => {
+    it("should return public details of customer for linking", async () => {
+      const customer = await factories.createCustomer({ name: "Somchai" });
+
+      const response = await makeRequest("GET", `/api/v1/customers/${customer.id}/link-status`);
+
+      expect(response.status).toBe(200);
+      const data = await jsonResponse<{ name: string; isLineLinked: boolean; lineId: string | null }>(response);
+      expect(data.name).toBe("Somchai");
+      expect(data.isLineLinked).toBe(false);
+      expect(data.lineId).toBeNull();
+    });
+  });
+
+  describe("POST /api/v1/customers/:id/link-line (public)", () => {
+    it("should link line ID to customer", async () => {
+      const customer = await factories.createCustomer({ name: "Somchai" });
+
+      const response = await makeRequest("POST", `/api/v1/customers/${customer.id}/link-line`, undefined, {
+        lineId: "U123456789",
+      });
+
+      expect(response.status).toBe(200);
+      const data = await jsonResponse<{ success: boolean; data: { isLineLinked: boolean; lineId: string } }>(response);
+      expect(data.success).toBe(true);
+      expect(data.data.isLineLinked).toBe(true);
+      expect(data.data.lineId).toBe("U123456789");
+    });
+  });
+
+  describe("POST /api/v1/customers/:id/unlink-line", () => {
+    it("should unlink LINE ID from customer", async () => {
+      const user = await factories.createAdmin();
+      const token = generateToken({ email: user.email, role: "admin" }, user.id);
+      const customer = await factories.createCustomer({ lineId: "U123456789", isLineLinked: true });
+
+      const response = await makeRequest("POST", `/api/v1/customers/${customer.id}/unlink-line`, token);
+
+      expect(response.status).toBe(200);
+      const data = await jsonResponse<{ success: boolean; data: { isLineLinked: boolean; lineId: string | null } }>(response);
+      expect(data.success).toBe(true);
+      expect(data.data.isLineLinked).toBe(false);
+      expect(data.data.lineId).toBeNull();
+    });
+  });
 });

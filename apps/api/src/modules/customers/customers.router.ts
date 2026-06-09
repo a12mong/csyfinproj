@@ -1,9 +1,51 @@
 import { Router, type IRouter } from "express";
 import { createCustomerSchema, updateCustomerSchema } from "./customers.schemas.js";
-import { createCustomer, listCustomers, getCustomerDetail, updateCustomer } from "./customers.service.js";
+import { createCustomer, listCustomers, getCustomerDetail, updateCustomer, linkCustomerLine, unlinkCustomerLine } from "./customers.service.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 export const customersRouter: IRouter = Router();
+
+// GET /api/v1/customers/:id/link-status (public)
+customersRouter.get("/:id/link-status", async (req, res) => {
+  try {
+    const result = await getCustomerDetail(req.params["id"] as string);
+    res.json({
+      name: result.data.name,
+      isLineLinked: result.data.isLineLinked,
+      lineId: result.data.lineId,
+    });
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
+  }
+});
+
+// POST /api/v1/customers/:id/link-line (public)
+customersRouter.post("/:id/link-line", async (req, res) => {
+  try {
+    const lineId = req.body.lineId as string | undefined;
+    if (!lineId || !lineId.trim()) {
+      res.status(400).json({ error: "LINE ID is required" });
+      return;
+    }
+    const result = await linkCustomerLine(req.params["id"] as string, lineId.trim());
+    res.json({ success: true, data: result.data });
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
+  }
+});
+
+// POST /api/v1/customers/:id/unlink-line (requires auth)
+customersRouter.post("/:id/unlink-line", requireAuth, async (req, res) => {
+  try {
+    const result = await unlinkCustomerLine(req.params["id"] as string);
+    res.json({ success: true, data: result.data });
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
+  }
+});
 
 // POST /api/v1/customers
 customersRouter.post("/", requireAuth, async (req, res) => {

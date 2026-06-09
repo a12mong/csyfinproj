@@ -12,6 +12,7 @@ export interface Customer {
   phone: string;
   email?: string;
   lineId?: string;
+  isLineLinked?: boolean;
   address?: string;
   idCardNumber: string;
   type?: "personal" | "individual" | "finance";

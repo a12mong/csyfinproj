@@ -3,12 +3,48 @@ import type { SendRemindersInput, GetLogsQuery } from "./notifications.schemas.j
 
 const PAGE_SIZE = 20;
 
-// --- Stub channel senders ---
+// --- Channel senders ---
 
 async function sendViaLine(lineId: string, message: string): Promise<boolean> {
-  console.log(`[LINE stub] → ${lineId}: ${message}`);
-  // TODO: integrate with LINE Messaging API when LINE_CHANNEL_ACCESS_TOKEN is configured
-  return true;
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) {
+    console.warn("[LINE Notification] LINE_CHANNEL_ACCESS_TOKEN not set — using stub console log");
+    console.log(`[LINE stub] → ${lineId}: ${message}`);
+    return true;
+  }
+
+  try {
+    const response = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        to: lineId,
+        messages: [
+          {
+            type: "text",
+            text: message,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(
+        `[LINE Notification] Failed to send LINE push: ${response.status} - ${errText}`
+      );
+      return false;
+    }
+
+    console.log(`[LINE Notification] Successfully sent push message to ${lineId}`);
+    return true;
+  } catch (err) {
+    console.error("[LINE Notification] Error sending LINE push message:", err);
+    return false;
+  }
 }
 
 async function sendViaSms(phone: string, message: string): Promise<boolean> {

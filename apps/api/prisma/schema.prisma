@@ -143,6 +143,7 @@ model Customer {
   phone        String       @db.VarChar(20)
   email        String?      @db.VarChar(255)
   lineId       String?      @map("line_id") @db.VarChar(100)
+  isLineLinked Boolean      @default(false) @map("is_line_linked")
   address      String?      @db.Text
   idCardNumber String       @unique @map("id_card_number") @db.VarChar(13)
   type         CustomerType @default(personal)

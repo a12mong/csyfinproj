@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
 import FormModal from "@/components/FormModal";
 import { apiFetch } from "@/lib/api";
@@ -202,6 +203,7 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
 // ─── Customers Page ───────────────────────────────────────────────────────────
 
 export default function CustomersPage() {
+  const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -246,9 +248,9 @@ export default function CustomersPage() {
     setPage(1);
   }
 
-  function handleAddSuccess() {
+  function handleAddSuccess(customer: Customer) {
     setShowAddModal(false);
-    fetchCustomers(page, search);
+    router.push(`/customers/${customer.id}`);
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
