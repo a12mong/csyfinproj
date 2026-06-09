@@ -28,7 +28,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
     res.cookie("token", result.token, {
       httpOnly: true,
       secure: isProduction,
-      sameSite: "strict",
+      sameSite: isProduction ? "none" : "lax",
       maxAge: 8 * 60 * 60 * 1000, // 8 hours (matches JWT expiry)
       path: "/",
     });
@@ -41,7 +41,12 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
 
 // POST /api/v1/auth/logout
 authRouter.post("/logout", (req, res) => {
-  res.clearCookie("token", { path: "/" });
+  const isProduction = process.env.NODE_ENV === "production";
+  res.clearCookie("token", {
+    path: "/",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+  });
   res.json({ ok: true });
 });
 
