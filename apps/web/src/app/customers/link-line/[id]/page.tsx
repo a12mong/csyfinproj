@@ -18,6 +18,8 @@ export default function LinkLinePage() {
   const [error, setError] = useState<string | null>(null);
   const [lineUserId, setLineUserId] = useState("");
   const [success, setSuccess] = useState(false);
+  const [isSimulation, setIsSimulation] = useState(true);
+  const [lineProfile, setLineProfile] = useState<{ displayName: string; pictureUrl?: string } | null>(null);
 
   useEffect(() => {
     async function fetchStatus() {
@@ -29,12 +31,29 @@ export default function LinkLinePage() {
         if (res.isLineLinked && res.lineId) {
           setLineUserId(res.lineId);
           setSuccess(true);
+          setIsSimulation(false);
         } else {
-          // Generate a mockup LINE User ID for the user to copy/edit for testing
-          const randHex = Array.from({ length: 32 }, () =>
-            Math.floor(Math.random() * 16).toString(16)
-          ).join("");
-          setLineUserId(`U${randHex}`);
+          // Try to initialize real LIFF
+          const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+          if (liffId) {
+            try {
+              const { default: liff } = await import("@line/liff");
+              await liff.init({ liffId });
+              if (liff.isLoggedIn()) {
+                const profile = await liff.getProfile();
+                setLineUserId(profile.userId);
+                setLineProfile({ displayName: profile.displayName, pictureUrl: profile.pictureUrl });
+                setIsSimulation(false);
+              } else {
+                liff.login({ redirectUri: window.location.href });
+              }
+            } catch (liffErr) {
+              console.warn("LIFF initialization failed, falling back to simulation:", liffErr);
+              generateMockId();
+            }
+          } else {
+            generateMockId();
+          }
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load customer information");
@@ -42,6 +61,15 @@ export default function LinkLinePage() {
         setLoading(false);
       }
     }
+
+    function generateMockId() {
+      const randHex = Array.from({ length: 32 }, () =>
+        Math.floor(Math.random() * 16).toString(16)
+      ).join("");
+      setLineUserId(`U${randHex}`);
+      setIsSimulation(true);
+    }
+
     if (params.id) {
       fetchStatus();
     }
@@ -121,8 +149,19 @@ export default function LinkLinePage() {
                 <p className="text-xs text-[#d2ffd6] font-medium">Account Connection</p>
               </div>
             </div>
-            <div className="text-xs font-mono bg-[#05ab49] px-2.5 py-1 rounded-full text-white/90">
-              csyfinproj
+            <div className="flex items-center gap-2">
+              {isSimulation ? (
+                <span className="text-[10px] font-bold bg-amber-500 text-white px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                  Simulate
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold bg-green-500 text-white px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm animate-pulse">
+                  Live
+                </span>
+              )}
+              <div className="text-xs font-mono bg-[#05ab49] px-2.5 py-1 rounded-full text-white/90">
+                csyfinproj
+              </div>
             </div>
           </div>
 
@@ -176,15 +215,38 @@ export default function LinkLinePage() {
               </div>
 
               {/* Linking details card */}
-              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-4 flex items-center gap-4">
-                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-600 font-bold text-lg shadow-sm border border-white">
-                  {customer?.name.charAt(0)}
+              <div className="space-y-3">
+                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-4 flex items-center gap-4">
+                  <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-600 font-bold text-lg shadow-sm border border-white">
+                    {customer?.name.charAt(0)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Database Record</p>
+                    <p className="text-sm font-bold text-gray-800 truncate">{customer?.name}</p>
+                    <p className="text-xs text-gray-500">Customer UUID: ...{params.id.slice(-12)}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Database Record</p>
-                  <p className="text-sm font-bold text-gray-800 truncate">{customer?.name}</p>
-                  <p className="text-xs text-gray-500">Customer UUID: ...{params.id.slice(-12)}</p>
-                </div>
+
+                {lineProfile && (
+                  <div className="rounded-xl border border-solid border-[#06C755] bg-green-50/30 p-4 flex items-center gap-4">
+                    {lineProfile.pictureUrl ? (
+                      <img
+                        src={lineProfile.pictureUrl}
+                        alt="LINE Avatar"
+                        className="h-14 w-14 rounded-full border border-green-200 object-cover shadow-sm shrink-0"
+                      />
+                    ) : (
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-green-100 text-[#06C755] font-bold text-lg shadow-sm border border-white animate-pulse">
+                        {lineProfile.displayName.charAt(0)}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs text-[#06C755] font-semibold uppercase tracking-wider">Your LINE Profile</p>
+                      <p className="text-sm font-bold text-gray-800 truncate">{lineProfile.displayName}</p>
+                      <p className="text-xs text-gray-400 truncate">LINE ID: {lineUserId.slice(0, 12)}...</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* LINE App Authorization Checklist */}
@@ -220,18 +282,31 @@ export default function LinkLinePage() {
               <form onSubmit={handleLink} className="space-y-4 pt-2 border-t border-gray-100">
                 <div>
                   <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                    LINE User ID (Simulated)
+                    {isSimulation ? "LINE User ID (Simulated)" : "LINE User ID (Verified)"}
                   </label>
                   <input
                     type="text"
                     value={lineUserId}
                     onChange={(e) => setLineUserId(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-xs font-mono focus:border-[#06C755] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#06C755] transition-all"
+                    readOnly={!isSimulation}
+                    className={`w-full rounded-lg border px-3 py-2 text-xs font-mono focus:outline-none transition-all ${
+                      isSimulation
+                        ? "border-gray-300 bg-gray-50 focus:border-[#06C755] focus:bg-white focus:ring-1 focus:ring-[#06C755]"
+                        : "border-green-300 bg-green-50/30 text-green-800"
+                     }`}
                     placeholder="U123456789..."
                     required
                   />
-                  <p className="mt-1.5 text-[10px] text-gray-400 leading-tight">
-                    * This ID simulates the unique LINE identifier received during OAuth login. For testing webhook features, copy this ID.
+                  <p className="mt-1.5 text-[10px] text-gray-400 leading-tight font-medium">
+                    {isSimulation ? (
+                      <span>
+                        * ดึงข้อมูลในโหมดจำลอง คุณสามารถแก้ไข ID นี้เพื่อจำลองการทดสอบ หรือตรวจสอบคำแนะนำเพื่อเชื่อมต่อระบบจริง
+                      </span>
+                    ) : (
+                      <span className="text-[#06C755]">
+                        ✔ ดึงข้อมูลผ่าน LINE Front-end Framework สำเร็จ ยืนยันรหัสผู้ใช้เพื่อทำการผูกบัญชี
+                      </span>
+                    )}
                   </p>
                 </div>
 
