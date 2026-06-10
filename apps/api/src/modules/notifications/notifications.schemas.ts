@@ -13,3 +13,9 @@ export const getLogsQuerySchema = z.object({
 
 export type SendRemindersInput = z.infer<typeof sendRemindersBodySchema>;
 export type GetLogsQuery = z.infer<typeof getLogsQuerySchema>;
+
+export const sendGreetingBodySchema = z.object({
+  customer_id: z.string().uuid(),
+});
+
+export type SendGreetingInput = z.infer<typeof sendGreetingBodySchema>;

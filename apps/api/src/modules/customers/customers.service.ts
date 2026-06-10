@@ -134,7 +134,7 @@ export async function updateCustomer(id: string, input: UpdateCustomerInput) {
   return { data: updated };
 }
 
-export async function linkCustomerLine(id: string, lineId: string) {
+export async function linkCustomerLine(id: string, lineId: string, linePictureUrl?: string) {
   const customer = await prisma.customer.findUnique({
     where: { id },
   });
@@ -148,6 +148,7 @@ export async function linkCustomerLine(id: string, lineId: string) {
     data: {
       lineId,
       isLineLinked: true,
+      linePictureUrl: linePictureUrl || null,
     },
   });
 
@@ -168,6 +169,7 @@ export async function unlinkCustomerLine(id: string) {
     data: {
       lineId: null,
       isLineLinked: false,
+      linePictureUrl: null,
     },
   });
 

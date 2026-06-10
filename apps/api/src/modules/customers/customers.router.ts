@@ -13,6 +13,7 @@ customersRouter.get("/:id/link-status", async (req, res) => {
       name: result.data.name,
       isLineLinked: result.data.isLineLinked,
       lineId: result.data.lineId,
+      linePictureUrl: result.data.linePictureUrl,
     });
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };
@@ -24,11 +25,12 @@ customersRouter.get("/:id/link-status", async (req, res) => {
 customersRouter.post("/:id/link-line", async (req, res) => {
   try {
     const lineId = req.body.lineId as string | undefined;
+    const linePictureUrl = req.body.linePictureUrl as string | undefined;
     if (!lineId || !lineId.trim()) {
       res.status(400).json({ error: "LINE ID is required" });
       return;
     }
-    const result = await linkCustomerLine(req.params["id"] as string, lineId.trim());
+    const result = await linkCustomerLine(req.params["id"] as string, lineId.trim(), linePictureUrl);
     res.json({ success: true, data: result.data });
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };

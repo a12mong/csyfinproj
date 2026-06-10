@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
+import { toastSuccess, alertError } from "@/lib/swal";
 import type { CustomerWithDebtSummary, Sale, PaginatedResponse } from "@csyfinproj/shared";
 
 function formatPrice(n: number) {
@@ -44,6 +45,7 @@ export default function CustomerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [unlinking, setUnlinking] = useState(false);
+  const [sendingGreeting, setSendingGreeting] = useState(false);
   const [windowOrigin, setWindowOrigin] = useState("http://localhost:3000");
 
   useEffect(() => {
@@ -77,7 +79,7 @@ export default function CustomerDetailPage() {
     if (customer && !customer.isLineLinked) {
       pollInterval = setInterval(async () => {
         try {
-          const res = await apiFetch<{ isLineLinked: boolean; lineId: string | null }>(
+          const res = await apiFetch<{ isLineLinked: boolean; lineId: string | null; linePictureUrl: string | null }>(
             `/customers/${params.id}/link-status`
           );
           if (res.isLineLinked) {
@@ -87,6 +89,7 @@ export default function CustomerDetailPage() {
                     ...prev,
                     isLineLinked: true,
                     lineId: res.lineId ?? undefined,
+                    linePictureUrl: res.linePictureUrl,
                   }
                 : null
             );
@@ -114,6 +117,7 @@ export default function CustomerDetailPage() {
               ...prev,
               isLineLinked: false,
               lineId: undefined,
+              linePictureUrl: undefined,
             }
           : null
       );
@@ -121,6 +125,21 @@ export default function CustomerDetailPage() {
       alert(err instanceof Error ? err.message : "Failed to disconnect LINE account");
     } finally {
       setUnlinking(false);
+    }
+  }
+
+  async function handleSendGreeting() {
+    setSendingGreeting(true);
+    try {
+      await apiFetch("/notifications/send-greeting", {
+        method: "POST",
+        body: JSON.stringify({ customer_id: params.id }),
+      });
+      toastSuccess("ส่งข้อความทักทายเรียบร้อยแล้ว!");
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : "ไม่สามารถส่งข้อความทักทายได้");
+    } finally {
+      setSendingGreeting(false);
     }
   }
 
@@ -231,12 +250,20 @@ export default function CustomerDetailPage() {
           
           {customer.isLineLinked ? (
             <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-[#06C755] shrink-0">
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div className="flex-1 space-y-1">
+              {customer.linePictureUrl ? (
+                <img
+                  src={customer.linePictureUrl}
+                  alt="LINE profile"
+                  className="h-12 w-12 rounded-full object-cover shrink-0 border border-green-200 shadow-sm"
+                />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-[#06C755] shrink-0 border border-green-100">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              )}
+              <div className="flex-1 space-y-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-gray-800">Connected</span>
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 animate-pulse">
@@ -246,7 +273,7 @@ export default function CustomerDetailPage() {
                 <p className="text-xs text-gray-500">
                   This customer's record is successfully linked to their LINE account.
                 </p>
-                <div className="mt-2 font-mono text-xs text-gray-600 bg-gray-50 rounded-lg p-2 max-w-md truncate flex justify-between items-center">
+                <div className="mt-2 font-mono text-xs text-gray-600 bg-gray-50 rounded-lg p-2 max-w-md truncate flex justify-between items-center border border-gray-100">
                   <span className="truncate flex-1">LINE ID: {customer.lineId}</span>
                   <button
                     onClick={handleUnlink}
@@ -254,6 +281,15 @@ export default function CustomerDetailPage() {
                     className="text-red-600 hover:text-red-700 font-semibold text-xs ml-4 shrink-0 transition-colors"
                   >
                     {unlinking ? "Disconnecting..." : "Disconnect"}
+                  </button>
+                </div>
+                <div className="pt-2">
+                  <button
+                    onClick={handleSendGreeting}
+                    disabled={sendingGreeting}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#06C755] hover:bg-[#05b04b] text-white text-xs font-bold rounded-lg transition-all shadow-sm disabled:opacity-50"
+                  >
+                    💬 {sendingGreeting ? "กำลังส่ง..." : "ส่งข้อความทักทาย (Greeting)"}
                   </button>
                 </div>
               </div>

@@ -13,6 +13,7 @@ export interface Customer {
   email?: string;
   lineId?: string;
   isLineLinked?: boolean;
+  linePictureUrl?: string | null;
   address?: string;
   idCardNumber: string;
   type?: "personal" | "individual" | "finance";

@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import type { SendRemindersInput, GetLogsQuery } from "./notifications.schemas.js";
+import type { SendRemindersInput, GetLogsQuery, SendGreetingInput } from "./notifications.schemas.js";
 
 const PAGE_SIZE = 20;
 
@@ -181,4 +181,38 @@ export async function getNotificationLogs(query: GetLogsQuery) {
   ]);
 
   return { data, total, page: query.page, pageSize: PAGE_SIZE };
+}
+
+export async function sendGreetingMessage(input: SendGreetingInput) {
+  const customer = await prisma.customer.findUnique({
+    where: { id: input.customer_id },
+  });
+
+  if (!customer) {
+    throw Object.assign(new Error("Customer not found"), { statusCode: 404 });
+  }
+
+  if (!customer.isLineLinked || !customer.lineId) {
+    throw Object.assign(new Error("Customer has no linked LINE account"), { statusCode: 400 });
+  }
+
+  const message = `สวัสดีคุณ ${customer.name}! ขอบคุณที่เชื่อมต่อบัญชี LINE กับระบบ csyfinproj ของเรา ยินดีที่ได้ให้บริการและคอยช่วยเหลือท่านครับ 🏍️`;
+
+  const success = await sendViaLine(customer.lineId, message);
+
+  await prisma.notificationLog.create({
+    data: {
+      customerId: customer.id,
+      channel: "line",
+      message,
+      status: success ? "sent" : "failed",
+      sentAt: success ? new Date() : null,
+    },
+  });
+
+  if (!success) {
+    throw Object.assign(new Error("Failed to send LINE message"), { statusCode: 500 });
+  }
+
+  return { success: true, message: "Greeting message sent successfully" };
 }

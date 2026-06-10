@@ -84,7 +84,10 @@ export default function LinkLinePage() {
     try {
       await apiFetch(`/customers/${params.id}/link-line`, {
         method: "POST",
-        body: JSON.stringify({ lineId: lineUserId.trim() }),
+        body: JSON.stringify({
+          lineId: lineUserId.trim(),
+          linePictureUrl: lineProfile?.pictureUrl || null,
+        }),
       });
       setSuccess(true);
       if (customer) {
