@@ -5,7 +5,10 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
-import type { SaleWithInstallments, Installment } from "@csyfinproj/shared";
+import type { SaleWithInstallments, Installment, Payment } from "@csyfinproj/shared";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -13,7 +16,8 @@ function formatPrice(n: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
     currency: "THB",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(n);
 }
 
@@ -28,17 +32,17 @@ function formatDate(dateStr: string) {
 // ─── installment status badge ─────────────────────────────────────────────────
 
 const INSTALLMENT_STATUS_STYLES: Record<Installment["status"], string> = {
-  pending: "bg-yellow-50 text-yellow-700",
-  paid: "bg-green-50 text-green-700",
-  overdue: "bg-red-50 text-red-700",
-  partially_paid: "bg-orange-50 text-orange-700",
+  pending: "bg-yellow-50 text-yellow-700 border border-yellow-200",
+  paid: "bg-green-50 text-green-700 border border-green-200",
+  overdue: "bg-red-50 text-red-700 border border-red-200",
+  partially_paid: "bg-orange-50 text-orange-700 border border-orange-200",
 };
 
 const INSTALLMENT_STATUS_LABELS: Record<Installment["status"], string> = {
-  pending: "Pending",
-  paid: "Paid",
-  overdue: "Overdue",
-  partially_paid: "Partial",
+  pending: "ค้างชำระ (Pending)",
+  paid: "ชำระครบแล้ว (Paid)",
+  overdue: "เกินกำหนด (Overdue)",
+  partially_paid: "ชำระบางส่วน (Partial)",
 };
 
 function InstallmentBadge({ status }: { status: Installment["status"] }) {
@@ -191,10 +195,23 @@ export default function SaleDetailPage() {
         {isFinanceCompany && (
           <div className="mb-6 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
             <p className="text-sm text-blue-700">
-              This sale is financed via{" "}
-              <strong>{sale.financeCompanyName ?? "a financial institution"}</strong>.
-              Installment terms are managed through the linked contract.
+              รายการขายนี้เป็นรายการขายผ่านบริษัทไฟแนนซ์ <strong>{sale.financeCompanyName ?? "บริษัทไฟแนนซ์"}</strong> (This sale is financed via <strong>{sale.financeCompanyName ?? "finance company"}</strong>).
             </p>
+          </div>
+        )}
+
+        {/* Linked contract notice */}
+        {(sale as any).linkedContract && (
+          <div className="mb-6 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 flex items-center justify-between shadow-sm">
+            <p className="text-sm text-emerald-800">
+              รายการขายนี้เชื่อมโยงกับสัญญาเช่าซื้อเลขที่: <strong>{(sale as any).linkedContract.contractNumber}</strong> (สถานะ: <span className="capitalize font-semibold">{(sale as any).linkedContract.status}</span>)
+            </p>
+            <Link
+              href={`/contracts/${(sale as any).linkedContract.id}`}
+              className="text-xs font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition-colors border border-emerald-200"
+            >
+              ไปหน้าสัญญา (Go to Contract) →
+            </Link>
           </div>
         )}
 
@@ -359,38 +376,169 @@ export default function SaleDetailPage() {
                         Paid
                       </th>
                       <th className="text-left px-5 py-3 font-medium text-gray-500">
+                        Payments & Invoices
+                      </th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">
                         Status
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sale.installments.map((installment) => (
-                      <tr
-                        key={installment.id}
-                        className={`border-b border-gray-50 ${
-                          installment.status === "overdue"
-                            ? "bg-red-50/30"
-                            : installment.status === "paid"
-                            ? "bg-green-50/20"
-                            : ""
-                        }`}
-                      >
-                        <td className="px-5 py-3 text-center text-gray-500">
-                          {installment.installmentNumber}
-                        </td>
+                    {sale.installments.map((installment) => {
+                      const linkedPayments = (installment as any).payments || [];
+                      return (
+                        <tr
+                          key={installment.id}
+                          className={`border-b border-gray-50 ${
+                            installment.status === "overdue"
+                              ? "bg-red-50/30"
+                              : installment.status === "paid"
+                              ? "bg-green-50/20"
+                              : ""
+                          }`}
+                        >
+                          <td className="px-5 py-3 text-center text-gray-500">
+                            {installment.installmentNumber}
+                          </td>
+                          <td className="px-5 py-3 text-gray-600">
+                            {formatDate(installment.dueDate)}
+                          </td>
+                          <td className="px-5 py-3 text-right text-gray-900">
+                            {formatPrice(Number(installment.amountDue))}
+                          </td>
+                          <td className="px-5 py-3 text-right text-gray-600">
+                            {Number(installment.amountPaid) > 0 ? (
+                              <div>
+                                <p className="font-semibold text-gray-900">{formatPrice(Number(installment.amountPaid))}</p>
+                                {installment.status === "partially_paid" && (
+                                  <p className="text-[10px] text-orange-600 font-medium">
+                                    (ขาด {formatPrice(Number(installment.amountDue) - Number(installment.amountPaid))})
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-xs text-gray-600">
+                            {linkedPayments.length > 0 ? (
+                              <div className="space-y-1.5 max-w-[280px] text-left">
+                                {linkedPayments.map((p: any) => (
+                                  <div key={p.id} className="border-b border-dashed border-gray-100 pb-1 last:border-0 last:pb-0">
+                                    <div className="flex justify-between font-medium text-gray-800">
+                                      <span>{formatPrice(Number(p.amount))}</span>
+                                      <span className="text-[10px] uppercase text-gray-400">{p.paymentChannel}</span>
+                                    </div>
+                                    <div className="flex justify-between text-[10px] text-gray-400">
+                                      <span>{formatDate(p.paymentDate)}</span>
+                                      <span className={p.verified ? "text-green-600 font-semibold" : "text-amber-500 font-semibold"}>
+                                        {p.verified ? "Verified" : "Pending"}
+                                      </span>
+                                    </div>
+                                    {/* Tax Invoices linked to this payment */}
+                                    {p.taxInvoices && p.taxInvoices.map((inv: any) => (
+                                      <div key={inv.id} className="flex justify-between items-center bg-gray-50 rounded px-1.5 py-0.5 mt-1 text-[10px]">
+                                        <span className="font-mono text-gray-600">📄 {inv.invoiceNumber}</span>
+                                        <a
+                                          href={`${API_BASE_URL}/payments/invoices/${inv.id}/print`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-primary-600 hover:text-primary-700 font-semibold"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                          }}
+                                        >
+                                          Print
+                                        </a>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 font-light">—</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="flex flex-col items-center">
+                              <InstallmentBadge status={installment.status} />
+                              {installment.status === "partially_paid" && (
+                                <span className="text-[10px] text-orange-600 mt-1 font-semibold">
+                                  ค้างจ่าย: {formatPrice(Number(installment.amountDue) - Number(installment.amountPaid))}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isInstallment && sale.installments.length === 0 && !(sale as any).linkedContract && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-6">
+            <h3 className="text-sm font-semibold text-yellow-800 mb-1">
+              สัญญายังไม่ถูกสร้าง (Contract Not Created)
+            </h3>
+            <p className="text-sm text-yellow-700 mb-3">
+              รายการขายนี้เป็นการขายแบบ Installment (เช่าซื้อ) จำเป็นต้องสร้างสัญญาเช่าซื้อเพื่อกำหนดจำนวนงวด ดอกเบี้ย และคำนวณตารางผ่อนชำระ
+            </p>
+            <Link
+              href={`/contracts?open=new&customer_id=${sale.customerId}&sale_id=${sale.id}`}
+              className="inline-flex items-center justify-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+            >
+              สร้างสัญญาเช่าซื้อ (Create Contract)
+            </Link>
+          </div>
+        )}
+
+        {/* Addons detailed list */}
+        {sale.addons && sale.addons.length > 0 && (
+          <div className="mt-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-3">
+              รายละเอียดของแถมและบริการเสริม (Add-on Details)
+            </h2>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">Type</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">Billing Option</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">Cost Price</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">Selling Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sale.addons.map((a: any) => (
+                      <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="px-5 py-3 font-semibold text-gray-900">{a.name}</td>
+                        <td className="px-5 py-3 text-gray-600 capitalize">{a.type}</td>
                         <td className="px-5 py-3 text-gray-600">
-                          {formatDate(installment.dueDate)}
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            a.billingOption === "free_gift"
+                              ? "bg-green-50 text-green-700"
+                              : a.billingOption === "included_in_finance"
+                              ? "bg-blue-50 text-blue-700"
+                              : "bg-gray-100 text-gray-700"
+                          }`}>
+                            {a.billingOption === "free_gift"
+                              ? "Free Gift (ของแถม)"
+                              : a.billingOption === "included_in_finance"
+                              ? "Included in Finance (รวมในไฟแนนซ์)"
+                              : "Pay Separately (จ่ายแยก)"}
+                          </span>
                         </td>
-                        <td className="px-5 py-3 text-right text-gray-900">
-                          {formatPrice(installment.amountDue)}
+                        <td className="px-5 py-3 text-right text-gray-500">
+                          {formatPrice(Number(a.costPrice))}
                         </td>
-                        <td className="px-5 py-3 text-right text-gray-600">
-                          {installment.amountPaid > 0
-                            ? formatPrice(installment.amountPaid)
-                            : "—"}
-                        </td>
-                        <td className="px-5 py-3">
-                          <InstallmentBadge status={installment.status} />
+                        <td className="px-5 py-3 text-right text-gray-900 font-semibold">
+                          {formatPrice(Number(a.priceAtSale ?? a.price))}
                         </td>
                       </tr>
                     ))}
@@ -401,20 +549,35 @@ export default function SaleDetailPage() {
           </div>
         )}
 
-        {/* Finance company — refer to contract */}
-        {isFinanceCompany && (
-          <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
-            <p className="text-sm font-semibold text-gray-900 mb-1">Installment Schedule</p>
-            <p className="text-sm text-gray-500">
-              Installment terms for this finance-company sale are managed through a linked contract.
-              View the contract to see the full amortization schedule.
-            </p>
-            <Link
-              href="/contracts"
-              className="mt-2 inline-block text-sm text-primary-600 hover:underline"
-            >
-              Go to Contracts →
-            </Link>
+        {/* Tax Invoices direct printing */}
+        {sale.taxInvoices && sale.taxInvoices.length > 0 && (
+          <div className="mt-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-3">
+              พิมพ์ใบกำกับภาษี (Tax Invoices)
+            </h2>
+            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+              {sale.taxInvoices.map((inv: any) => (
+                <div key={inv.id} className="flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-semibold text-gray-900">📄 {inv.invoiceNumber}</span>
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize bg-gray-100 text-gray-600`}>
+                        {inv.type.replace("_", " ")}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Issued: {formatDate(inv.issuedAt)} · Amount: <span className="font-semibold text-gray-900">{formatPrice(Number(inv.totalAmount))}</span> (VAT: {formatPrice(Number(inv.vatAmount))})
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => window.open(`${API_BASE_URL}/payments/invoices/${inv.id}/print`, "_blank")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white hover:bg-primary-700 text-xs font-semibold rounded-lg transition-colors shadow-sm"
+                  >
+                    🖨️ Print Invoice
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

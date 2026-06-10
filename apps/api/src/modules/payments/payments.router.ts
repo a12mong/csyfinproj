@@ -14,6 +14,8 @@ import {
 } from "./payments.service.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { uploadSlip } from "../../lib/upload.js";
+import { generateInvoiceHtml } from "./invoices-print.js";
+import { prisma } from "../../lib/prisma.js";
 
 export const paymentsRouter: IRouter = Router();
 
@@ -91,6 +93,32 @@ paymentsRouter.patch("/:id/verify", requireAuth, async (req, res) => {
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };
     res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
+  }
+});
+
+// GET /api/v1/payments/invoices/:id/print
+paymentsRouter.get("/invoices/:id/print", requireAuth, async (req, res) => {
+  try {
+    const invoice = await prisma.taxInvoice.findUnique({
+      where: { id: req.params["id"] as string },
+      include: {
+        customer: true,
+        sale: { include: { motorcycle: true, buyerCustomer: true } },
+        payment: { include: { contract: true } },
+      },
+    });
+
+    if (!invoice) {
+      res.status(404).send("Tax Invoice not found");
+      return;
+    }
+
+    const html = generateInvoiceHtml(invoice);
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
+  } catch (err: unknown) {
+    const e = err as { message?: string };
+    res.status(500).send(`Error: ${e.message ?? "Internal server error"}`);
   }
 });
 

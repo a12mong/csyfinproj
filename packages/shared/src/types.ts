@@ -65,6 +65,7 @@ export interface Sale {
   financeCompanyName?: string;
   financeReferenceNumber?: string;
   financialInstitutionId?: string | null;
+  commissionAmount?: number | null;
   status: "active" | "completed" | "defaulted" | "cancelled";
   notes?: string;
 }
@@ -74,8 +75,9 @@ export interface SaleWithInstallments extends Sale {
   invoiceCustomer?: Customer;
   buyerCustomer?: Customer | null;
   motorcycle: Motorcycle;
-  installments: Installment[];
-  addons: Addon[];
+  installments: (Installment & { payments?: (Payment & { taxInvoices?: any[] })[] })[];
+  addons: (Addon & { priceAtSale?: number; billingOption?: string })[];
+  taxInvoices?: any[];
 }
 
 export interface Installment {
@@ -97,12 +99,15 @@ export interface Payment {
   id: string;
   installmentId: string | null;
   contractId?: string | null;
+  saleId?: string | null;
   amount: number;
   paymentDate: string;
   paymentChannel: "cash" | "bank_transfer" | "line";
   slipImageUrl?: string;
   verified: boolean;
+  verifiedByUserId?: string | null;
   lineMessageId?: string;
+  notes?: string | null;
   contract?: { id: string; contractNumber: string; customer?: { id: string; name: string } } | null;
 }
 
@@ -135,7 +140,26 @@ export interface Addon {
   name: string;
   description?: string;
   price: number;
+  costPrice: number;
+  stockQty: number;
+  type: "part" | "accessory" | "service";
+  sku?: string | null;
   active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaxInvoice {
+  id: string;
+  invoiceNumber: string;
+  saleId?: string | null;
+  paymentId?: string | null;
+  customerId: string;
+  type: "motorcycle" | "commission" | "installment" | "addon" | "down_payment";
+  amount: number;
+  vatAmount: number;
+  totalAmount: number;
+  issuedAt: string;
 }
 
 export interface NotificationLog {

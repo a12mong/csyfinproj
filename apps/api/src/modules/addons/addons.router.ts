@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { createAddonSchema } from "./addons.schemas.js";
-import { createAddon, listAddons } from "./addons.service.js";
+import { createAddonSchema, updateAddonSchema } from "./addons.schemas.js";
+import { createAddon, listAddons, updateAddon } from "./addons.service.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 export const addonsRouter: IRouter = Router();
@@ -25,10 +25,32 @@ addonsRouter.post("/", requireAuth, async (req, res) => {
 // GET /api/v1/addons
 addonsRouter.get("/", requireAuth, async (req, res) => {
   try {
-    const result = await listAddons();
+    const { type, search } = req.query;
+    const result = await listAddons({
+      type: typeof type === "string" ? type : undefined,
+      search: typeof search === "string" ? search : undefined,
+    });
     res.json(result);
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };
     res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
   }
 });
+
+// PATCH /api/v1/addons/:id
+addonsRouter.patch("/:id", requireAuth, async (req, res) => {
+  const parsed = updateAddonSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const result = await updateAddon(req.params.id as string, parsed.data);
+    res.json(result);
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
+  }
+});
+

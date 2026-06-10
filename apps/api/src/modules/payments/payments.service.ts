@@ -1,5 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import type { CreatePaymentInput, VerifyPaymentInput, ListPaymentsQuery } from "./payments.schemas.js";
+import { createTaxInvoice } from "./invoices.service.js";
+import { sendPaymentConfirmation } from "../notifications/notifications.service.js";
 
 export async function listPayments(query: ListPaymentsQuery) {
   const { installment_id, contract_id, contract_number, sale_id, payment_channel, verified, page, limit } = query;
@@ -17,11 +19,10 @@ export async function listPayments(query: ListPaymentsQuery) {
     where.contract = { contractNumber: { contains: contract_number, mode: "insensitive" } };
   }
   if (sale_id) {
-    // Match payments linked to a contract that includes this sale,
-    // OR payments linked to an installment that belongs to this sale directly.
     where.OR = [
       { contract: { contractSales: { some: { saleId: sale_id } } } },
       { installment: { saleId: sale_id } },
+      { saleId: sale_id },
     ];
   }
   if (payment_channel) {
@@ -48,6 +49,7 @@ export async function listPayments(query: ListPaymentsQuery) {
           select: { id: true, contractNumber: true, customer: { select: { id: true, name: true } } },
         },
         verifiedBy: { select: { id: true, name: true } },
+        taxInvoices: true,
       },
       orderBy: [
         { paymentChannel: "desc" },
@@ -61,50 +63,6 @@ export async function listPayments(query: ListPaymentsQuery) {
 }
 
 export async function recordPayment(input: CreatePaymentInput) {
-  // Determine which installment to apply this payment to.
-  let targetInstallmentId: string;
-
-  if (input.installment_id) {
-    // Direct installment reference — existing path
-    const installment = await prisma.installment.findUnique({
-      where: { id: input.installment_id },
-    });
-    if (!installment) {
-      throw Object.assign(new Error("Installment not found"), { statusCode: 404 });
-    }
-    targetInstallmentId = installment.id;
-  } else if (input.contract_id) {
-    // Contract reference — find the oldest unpaid installment
-    const contract = await prisma.contract.findUnique({
-      where: { id: input.contract_id },
-    });
-    if (!contract) {
-      throw Object.assign(new Error("Contract not found"), { statusCode: 404 });
-    }
-
-    const oldestInstallment = await prisma.installment.findFirst({
-      where: {
-        contractId: input.contract_id,
-        status: { in: ["pending", "overdue", "partially_paid"] },
-      },
-      orderBy: { dueDate: "asc" },
-    });
-
-    if (!oldestInstallment) {
-      throw Object.assign(
-        new Error("No open installments found for this contract"),
-        { statusCode: 422 }
-      );
-    }
-    targetInstallmentId = oldestInstallment.id;
-  } else {
-    throw Object.assign(
-      new Error("Either installment_id or contract_id is required"),
-      { statusCode: 400 }
-    );
-  }
-
-  // bank_transfer requires a slip image
   if (input.payment_channel === "bank_transfer" && !input.slip_image) {
     throw Object.assign(
       new Error("Slip image is required for bank_transfer payments"),
@@ -112,62 +70,313 @@ export async function recordPayment(input: CreatePaymentInput) {
     );
   }
 
-  const installment = await prisma.installment.findUnique({
-    where: { id: targetInstallmentId },
+  const paymentDate = new Date(input.payment_date);
+
+  // 1. Direct Sale Payment (Down payments/cash sales)
+  if (input.sale_id && !input.contract_id && !input.installment_id) {
+    const sale = await prisma.sale.findUnique({
+      where: { id: input.sale_id },
+    });
+    if (!sale) {
+      throw Object.assign(new Error("Sale not found"), { statusCode: 404 });
+    }
+
+    const payment = await prisma.payment.create({
+      data: {
+        saleId: input.sale_id,
+        amount: input.amount,
+        paymentDate,
+        paymentChannel: input.payment_channel ?? "cash",
+        slipImageUrl: input.slip_image,
+        notes: input.notes,
+        verified: false,
+      },
+    });
+    return { data: payment };
+  }
+
+  // 2. Installment/Contract Payment (with sequential allocation)
+  let contractId = input.contract_id;
+  let targetInstallmentId = input.installment_id;
+
+  if (targetInstallmentId && !contractId) {
+    const inst = await prisma.installment.findUnique({
+      where: { id: targetInstallmentId },
+    });
+    if (!inst) {
+      throw Object.assign(new Error("Installment not found"), { statusCode: 404 });
+    }
+    contractId = inst.contractId ?? undefined;
+  }
+
+  if (!contractId && !targetInstallmentId) {
+    throw Object.assign(
+      new Error("Either installment_id, contract_id, or sale_id is required"),
+      { statusCode: 400 }
+    );
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    if (contractId) {
+      const openInstallments = await tx.installment.findMany({
+        where: {
+          contractId,
+          status: { in: ["pending", "overdue", "partially_paid"] },
+        },
+        orderBy: { dueDate: "asc" },
+      });
+
+      if (openInstallments.length === 0) {
+        throw Object.assign(
+          new Error("No open installments found for this contract"),
+          { statusCode: 422 }
+        );
+      }
+
+      let remainingAmount = input.amount;
+      const paymentsCreated = [];
+
+      for (const inst of openInstallments) {
+        if (remainingAmount <= 0) break;
+
+        const due = Number(inst.amountDue);
+        const paid = Number(inst.amountPaid);
+        const outstanding = due - paid;
+
+        if (outstanding <= 0) continue;
+
+        const applyAmount = Math.min(remainingAmount, outstanding);
+        remainingAmount -= applyAmount;
+
+        const payment = await tx.payment.create({
+          data: {
+            installmentId: inst.id,
+            contractId,
+            amount: applyAmount,
+            paymentDate,
+            paymentChannel: input.payment_channel ?? "cash",
+            slipImageUrl: input.slip_image,
+            notes: input.notes,
+            verified: false,
+          },
+        });
+
+        const totalPaid = paid + applyAmount;
+        const newStatus =
+          totalPaid >= due
+            ? "paid"
+            : totalPaid > 0
+              ? "partially_paid"
+              : "pending";
+
+        await tx.installment.update({
+          where: { id: inst.id },
+          data: {
+            amountPaid: totalPaid,
+            status: newStatus,
+            ...(newStatus === "paid" && { paidAt: new Date() }),
+          },
+        });
+
+        paymentsCreated.push(payment);
+      }
+
+      // If there is excess payment amount, apply it to the last installment
+      if (remainingAmount > 0) {
+        const lastInst = openInstallments[openInstallments.length - 1];
+        if (lastInst) {
+          const payment = await tx.payment.create({
+            data: {
+              installmentId: lastInst.id,
+              contractId,
+              amount: remainingAmount,
+              paymentDate,
+              paymentChannel: input.payment_channel ?? "cash",
+              slipImageUrl: input.slip_image,
+              notes: input.notes ? `${input.notes} (Excess payment)` : "Excess payment",
+              verified: false,
+            },
+          });
+
+          const totalPaid = Number(lastInst.amountPaid) + remainingAmount;
+          await tx.installment.update({
+            where: { id: lastInst.id },
+            data: {
+              amountPaid: totalPaid,
+              status: "paid",
+              paidAt: new Date(),
+            },
+          });
+
+          paymentsCreated.push(payment);
+        }
+      }
+
+      return paymentsCreated[0];
+    } else {
+      // Direct installment payment without contract link
+      const inst = await tx.installment.findUnique({
+        where: { id: targetInstallmentId! },
+      });
+      if (!inst) {
+        throw Object.assign(new Error("Installment not found"), { statusCode: 404 });
+      }
+
+      const payment = await tx.payment.create({
+        data: {
+          installmentId: targetInstallmentId,
+          amount: input.amount,
+          paymentDate,
+          paymentChannel: input.payment_channel ?? "cash",
+          slipImageUrl: input.slip_image,
+          notes: input.notes,
+          verified: false,
+        },
+      });
+
+      const totalPaid = Number(inst.amountPaid) + input.amount;
+      const newStatus =
+        totalPaid >= Number(inst.amountDue)
+          ? "paid"
+          : totalPaid > 0
+            ? "partially_paid"
+            : "pending";
+
+      await tx.installment.update({
+        where: { id: targetInstallmentId! },
+        data: {
+          amountPaid: totalPaid,
+          status: newStatus,
+          ...(newStatus === "paid" && { paidAt: new Date() }),
+        },
+      });
+
+      return payment;
+    }
   });
 
-  const payment = await prisma.payment.create({
-    data: {
-      installmentId: targetInstallmentId,
-      contractId: input.contract_id ?? installment?.contractId ?? null,
-      amount: input.amount,
-      paymentDate: new Date(input.payment_date),
-      paymentChannel: input.payment_channel ?? "cash",
-      slipImageUrl: input.slip_image,
-      notes: input.notes,
-      verified: false,
-    },
-  });
-
-  // Update installment amount paid
-  const totalPaid = Number(installment!.amountPaid) + input.amount;
-  const newStatus =
-    totalPaid >= Number(installment!.amountDue)
-      ? "paid"
-      : totalPaid > 0
-        ? "partially_paid"
-        : "pending";
-
-  await prisma.installment.update({
-    where: { id: targetInstallmentId },
-    data: {
-      amountPaid: totalPaid,
-      status: newStatus,
-      ...(newStatus === "paid" && { paidAt: new Date() }),
-    },
-  });
-
-  return { data: payment };
+  return { data: result };
 }
 
 export async function verifyPayment(id: string, input: VerifyPaymentInput, userId: string) {
   const payment = await prisma.payment.findUnique({
     where: { id },
+    include: {
+      installment: {
+        include: {
+          sale: true,
+          contract: {
+            include: {
+              contractSales: {
+                include: {
+                  sale: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      contract: {
+        include: {
+          contractSales: {
+            include: {
+              sale: true,
+            },
+          },
+        },
+      },
+      sale: true,
+    },
   });
 
   if (!payment) {
     throw Object.assign(new Error("Payment not found"), { statusCode: 404 });
   }
 
-  const updated = await prisma.payment.update({
-    where: { id },
-    data: {
-      verified: input.verified,
-      verifiedByUserId: input.verified ? userId : null,
-    },
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.payment.update({
+      where: { id },
+      data: {
+        verified: input.verified,
+        verifiedByUserId: input.verified ? userId : null,
+      },
+    });
+
+    if (input.verified) {
+      // Determine invoice type
+      let invoiceType: "motorcycle" | "commission" | "installment" | "addon" | "down_payment" = "installment";
+      let sale = payment.sale || payment.installment?.sale;
+      if (!sale) {
+        const contract = payment.contract || payment.installment?.contract;
+        if (contract && contract.contractSales && contract.contractSales.length > 0) {
+          sale = contract.contractSales[0].sale;
+        }
+      }
+
+      if (payment.addonId) {
+        invoiceType = "addon";
+      } else if (payment.saleId) {
+        if (sale?.paymentMethod === "finance_company") {
+          if (sale.commissionAmount && Number(payment.amount) === Number(sale.commissionAmount)) {
+            invoiceType = "commission";
+          } else if (sale.downPayment && Number(payment.amount) === Number(sale.downPayment)) {
+            invoiceType = "down_payment";
+          } else {
+            invoiceType = "motorcycle";
+          }
+        } else if (sale?.paymentMethod === "installment") {
+          invoiceType = "down_payment";
+        } else if (sale?.paymentMethod === "cash") {
+          invoiceType = "motorcycle";
+        }
+      }
+
+      // Resolve correct customer ID for the tax invoice
+      let customerId = payment.contract?.customerId || payment.installment?.sale?.customerId || payment.sale?.customerId;
+      if (!customerId && sale) {
+        customerId = sale.buyerCustomerId || sale.customerId;
+      }
+      
+      if (sale) {
+        if (sale.paymentMethod === "finance_company") {
+          if (invoiceType === "down_payment" || invoiceType === "addon") {
+            // Down payment and addons are paid by the actual buyer customer
+            customerId = sale.buyerCustomerId || sale.customerId;
+          } else {
+            // Motorcycle payout and commission are paid by the finance company
+            customerId = sale.invoiceCustomerId || sale.customerId;
+          }
+        } else {
+          // Cash and installment: invoices are paid by the buyer customer
+          customerId = sale.buyerCustomerId || sale.customerId;
+        }
+      }
+
+      if (!customerId) {
+        throw new Error("Could not resolve customer for tax invoice");
+      }
+
+      await createTaxInvoice(tx, {
+        saleId: sale?.id ?? null,
+        paymentId: payment.id,
+        customerId,
+        type: invoiceType,
+        totalAmount: Number(payment.amount),
+      });
+    }
+
+    return updated;
   });
 
-  return { data: updated };
+  if (input.verified) {
+    try {
+      await sendPaymentConfirmation(id);
+    } catch (err) {
+      console.error("[verifyPayment] Notification trigger failed:", err);
+    }
+  }
+
+  return { data: result };
 }
 
 export async function getPaymentDetail(id: string) {

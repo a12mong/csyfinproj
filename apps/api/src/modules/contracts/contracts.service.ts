@@ -221,6 +221,7 @@ export async function createContract(input: CreateContractInput, userId: string)
       annualRate: input.interest_rate,
       numInstallments: input.num_installments,
       startDate: new Date(input.start_date),
+      saleId: installmentSale?.id || financeCompanySale?.id || undefined,
     });
   }
 
@@ -257,6 +258,7 @@ async function generateInstallmentSchedule(
     annualRate: number;
     numInstallments: number;
     startDate: Date;
+    saleId?: string;
   }
 ) {
   const { principal, annualRate, numInstallments, startDate } = options;
@@ -309,6 +311,7 @@ async function generateInstallmentSchedule(
     const installment = await prisma.installment.create({
       data: {
         contractId,
+        saleId: options.saleId || null,
         installmentNumber: i + 1,
         dueDate,
         amountDue,
@@ -375,10 +378,20 @@ export async function getContractDetail(id: string) {
           },
         },
       },
-      installments: { orderBy: { installmentNumber: "asc" } },
+      installments: {
+        orderBy: { installmentNumber: "asc" },
+        include: {
+          payments: {
+            include: { taxInvoices: true },
+          },
+        },
+      },
       payments: {
         orderBy: { paymentDate: "desc" },
-        include: { verifiedBy: { select: { id: true, name: true } } },
+        include: {
+          verifiedBy: { select: { id: true, name: true } },
+          taxInvoices: true,
+        },
       },
       contractParties: { orderBy: { role: "asc" } },
     },

@@ -11,6 +11,7 @@ import {
   updateContract,
   generateContractInstallments,
 } from "./contracts.service.js";
+import { generateCoverPageHtml, generateFullAgreementHtml } from "./contracts-print.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 export const contractsRouter: IRouter = Router();
@@ -58,6 +59,32 @@ contractsRouter.get("/:id", requireAuth, async (req, res) => {
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };
     res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
+  }
+});
+
+// GET /api/v1/contracts/:id/print/cover
+contractsRouter.get("/:id/print/cover", requireAuth, async (req, res) => {
+  try {
+    const result = await getContractDetail(req.params["id"] as string);
+    const html = generateCoverPageHtml(result.data);
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    res.status(500).send(`Error: ${e.message ?? "Internal server error"}`);
+  }
+});
+
+// GET /api/v1/contracts/:id/print/full
+contractsRouter.get("/:id/print/full", requireAuth, async (req, res) => {
+  try {
+    const result = await getContractDetail(req.params["id"] as string);
+    const html = generateFullAgreementHtml(result.data);
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    res.status(500).send(`Error: ${e.message ?? "Internal server error"}`);
   }
 });
 

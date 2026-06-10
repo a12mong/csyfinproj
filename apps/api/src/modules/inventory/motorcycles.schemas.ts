@@ -26,6 +26,8 @@ export const listMotorcyclesSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
   status: z.enum(["in_stock", "reserved", "sold"]).optional(),
   search: z.string().optional(),
+  sort_by: z.enum(["createdAt", "model", "sellingPrice"]).optional(),
+  sort_order: z.enum(["asc", "desc"]).optional(),
 });
 
 export type CreateMotorcycleInput = z.infer<typeof createMotorcycleSchema>;

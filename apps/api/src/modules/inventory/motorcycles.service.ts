@@ -15,19 +15,27 @@ function formatMotorcycle(m: {
   createdAt: Date;
   updatedAt: Date;
 }) {
+  const cost = typeof m.costPrice === "object" ? (m.costPrice as { toNumber(): number }).toNumber() : m.costPrice;
+  const selling = typeof m.sellingPrice === "object" ? (m.sellingPrice as { toNumber(): number }).toNumber() : m.sellingPrice;
   return {
     id: m.id,
     brand: m.brand,
     model: m.model,
     year: m.year,
     chassis_number: m.chassisNumber,
+    chassisNumber: m.chassisNumber,
     engine_number: m.engineNumber,
+    engineNumber: m.engineNumber,
     color: m.color,
-    cost_price: typeof m.costPrice === "object" ? (m.costPrice as { toNumber(): number }).toNumber() : m.costPrice,
-    selling_price: typeof m.sellingPrice === "object" ? (m.sellingPrice as { toNumber(): number }).toNumber() : m.sellingPrice,
+    cost_price: cost,
+    costPrice: cost,
+    selling_price: selling,
+    sellingPrice: selling,
     status: m.status,
     created_at: m.createdAt,
     updated_at: m.updatedAt,
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
   };
 }
 
@@ -48,7 +56,7 @@ export async function createMotorcycle(input: CreateMotorcycleInput) {
 }
 
 export async function listMotorcycles(input: ListMotorcyclesInput) {
-  const { page, limit, status, search } = input;
+  const { page, limit, status, search, sort_by = "createdAt", sort_order = "desc" } = input;
   const skip = (page - 1) * limit;
 
   type WhereClause = NonNullable<Parameters<typeof prisma.motorcycle.findMany>[0]>["where"] & {
@@ -74,7 +82,7 @@ export async function listMotorcycles(input: ListMotorcyclesInput) {
       where,
       skip,
       take: limit,
-      orderBy: { createdAt: "desc" },
+      orderBy: { [sort_by]: sort_order },
     }),
     prisma.motorcycle.count({ where }),
   ]);

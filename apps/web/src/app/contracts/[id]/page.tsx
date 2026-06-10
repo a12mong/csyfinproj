@@ -14,7 +14,8 @@ function formatPrice(n: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
     currency: "THB",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(n);
 }
 
@@ -36,17 +37,17 @@ const CONTRACT_STATUS_STYLES: Record<string, string> = {
 };
 
 const INSTALLMENT_STATUS_STYLES: Record<ContractInstallment["status"], string> = {
-  pending: "bg-yellow-50 text-yellow-700",
-  paid: "bg-green-50 text-green-700",
-  overdue: "bg-red-50 text-red-700",
-  partially_paid: "bg-orange-50 text-orange-700",
+  pending: "bg-yellow-50 text-yellow-700 border border-yellow-200",
+  paid: "bg-green-50 text-green-700 border border-green-200",
+  overdue: "bg-red-50 text-red-700 border border-red-200",
+  partially_paid: "bg-orange-50 text-orange-700 border border-orange-200",
 };
 
 const INSTALLMENT_STATUS_LABELS: Record<ContractInstallment["status"], string> = {
-  pending: "Pending",
-  paid: "Paid",
-  overdue: "Overdue",
-  partially_paid: "Partial",
+  pending: "ค้างชำระ (Pending)",
+  paid: "ชำระครบแล้ว (Paid)",
+  overdue: "เกินกำหนด (Overdue)",
+  partially_paid: "ชำระบางส่วน (Partial)",
 };
 
 const CONTRACT_STATUSES: Array<{ value: string; label: string }> = [
@@ -164,6 +165,11 @@ export default function ContractDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [showActions, setShowActions] = useState(false);
 
+  const handlePrint = (type: "full" | "cover") => {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+    window.open(`${apiBaseUrl}/contracts/${params.id}/print/${type}`, "_blank");
+  };
+
   useEffect(() => {
     async function fetchContract() {
       setLoading(true);
@@ -251,12 +257,26 @@ export default function ContractDetailPage() {
               {contract.customer.phone}
             </p>
           </div>
-          <button
-            onClick={() => setShowActions((v) => !v)}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            {showActions ? "Hide Actions" : "Actions"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handlePrint("full")}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              พิมพ์สัญญาฉบับเต็ม
+            </button>
+            <button
+              onClick={() => handlePrint("cover")}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              พิมพ์ใบปะหน้า
+            </button>
+            <button
+              onClick={() => setShowActions((v) => !v)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              {showActions ? "Hide Actions" : "Actions"}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -411,48 +431,114 @@ export default function ContractDetailPage() {
                           <th className="text-right px-4 py-3 font-medium text-gray-500">Balance</th>
                         )}
                         <th className="text-right px-4 py-3 font-medium text-gray-500">Paid</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500">Payments & Invoices</th>
                         <th className="text-center px-4 py-3 font-medium text-gray-500">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {contract.installments.map((inst) => (
-                        <tr key={inst.id} className="border-b border-gray-50 hover:bg-gray-50">
-                          <td className="px-4 py-3 text-center text-gray-500">{inst.installmentNumber}</td>
-                          <td className="px-4 py-3 text-gray-600">{formatDate(inst.dueDate)}</td>
-                          {hasAmortizationData && (
-                            <>
-                              <td className="px-4 py-3 text-right text-gray-700">
-                                {inst.principalPortion != null
-                                  ? formatPrice(inst.principalPortion)
-                                  : "—"}
-                              </td>
+                      {contract.installments.map((inst) => {
+                        const linkedPayments = (inst as any).payments || [];
+                        return (
+                          <tr key={inst.id} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="px-4 py-3 text-center text-gray-500">{inst.installmentNumber}</td>
+                            <td className="px-4 py-3 text-gray-600">{formatDate(inst.dueDate)}</td>
+                            {hasAmortizationData && (
+                              <>
+                                <td className="px-4 py-3 text-right text-gray-700">
+                                  {inst.principalPortion != null
+                                    ? formatPrice(Number(inst.principalPortion))
+                                    : "—"}
+                                </td>
+                                <td className="px-4 py-3 text-right text-gray-500">
+                                  {inst.interestPortion != null && Number(inst.interestPortion) > 0
+                                    ? formatPrice(Number(inst.interestPortion))
+                                    : "—"}
+                                </td>
+                              </>
+                            )}
+                            <td className="px-4 py-3 text-right text-gray-900">{formatPrice(Number(inst.amountDue))}</td>
+                            {hasAmortizationData && (
                               <td className="px-4 py-3 text-right text-gray-500">
-                                {inst.interestPortion != null && inst.interestPortion > 0
-                                  ? formatPrice(inst.interestPortion)
+                                {inst.remainingBalance != null
+                                  ? formatPrice(Number(inst.remainingBalance))
                                   : "—"}
                               </td>
-                            </>
-                          )}
-                          <td className="px-4 py-3 text-right text-gray-900">{formatPrice(inst.amountDue)}</td>
-                          {hasAmortizationData && (
-                            <td className="px-4 py-3 text-right text-gray-500">
-                              {inst.remainingBalance != null
-                                ? formatPrice(inst.remainingBalance)
-                                : "—"}
+                            )}
+                            <td className="px-4 py-3 text-right text-gray-600">
+                              {Number(inst.amountPaid) > 0 ? (
+                                <div>
+                                  <p className="font-semibold text-gray-900">{formatPrice(Number(inst.amountPaid))}</p>
+                                  {inst.status === "partially_paid" && (
+                                    <p className="text-[10px] text-orange-600 font-medium">
+                                      (ขาด {formatPrice(Number(inst.amountDue) - Number(inst.amountPaid))})
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                "—"
+                              )}
                             </td>
-                          )}
-                          <td className="px-4 py-3 text-right text-gray-600">{formatPrice(inst.amountPaid)}</td>
-                          <td className="px-4 py-3 text-center">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                INSTALLMENT_STATUS_STYLES[inst.status] ?? "bg-gray-100 text-gray-500"
-                              }`}
-                            >
-                              {INSTALLMENT_STATUS_LABELS[inst.status] ?? inst.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                            
+                            {/* Payments & Invoices checklist */}
+                            <td className="px-4 py-3 text-xs text-gray-600">
+                              {linkedPayments.length > 0 ? (
+                                <div className="space-y-1.5 max-w-[280px]">
+                                  {linkedPayments.map((p: any) => (
+                                    <div key={p.id} className="border-b border-dashed border-gray-100 pb-1 last:border-0 last:pb-0">
+                                      <div className="flex justify-between font-medium text-gray-800">
+                                        <span>{formatPrice(p.amount)}</span>
+                                        <span className="text-[10px] uppercase text-gray-400">{p.paymentChannel}</span>
+                                      </div>
+                                      <div className="flex justify-between text-[10px] text-gray-400">
+                                        <span>{formatDate(p.paymentDate)}</span>
+                                        <span className={p.verified ? "text-green-600 font-semibold" : "text-amber-500 font-semibold"}>
+                                          {p.verified ? "Verified" : "Pending"}
+                                        </span>
+                                      </div>
+                                      {/* Tax Invoices linked to this payment */}
+                                      {p.taxInvoices && p.taxInvoices.map((inv: any) => (
+                                        <div key={inv.id} className="flex justify-between items-center bg-gray-50 rounded px-1.5 py-0.5 mt-1 text-[10px]">
+                                          <span className="font-mono text-gray-600">📄 {inv.invoiceNumber}</span>
+                                          <a
+                                            href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1"}/payments/invoices/${inv.id}/print`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-primary-600 hover:text-primary-700 font-semibold"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                            }}
+                                          >
+                                            Print
+                                          </a>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 font-light">—</span>
+                              )}
+                            </td>
+
+                            <td className="px-4 py-3 text-center">
+                              <div className="flex flex-col items-center">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    INSTALLMENT_STATUS_STYLES[inst.status] ?? "bg-gray-100 text-gray-500"
+                                  }`}
+                                >
+                                  {INSTALLMENT_STATUS_LABELS[inst.status] ?? inst.status}
+                                </span>
+                                {inst.status === "partially_paid" && (
+                                  <span className="text-[10px] text-orange-600 mt-1 font-semibold">
+                                    ค้างจ่าย: {formatPrice(Number(inst.amountDue) - Number(inst.amountPaid))}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

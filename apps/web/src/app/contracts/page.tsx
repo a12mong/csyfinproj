@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback, FormEvent } from "react";
+import { useEffect, useState, useCallback, FormEvent, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
 import FormModal from "@/components/FormModal";
 import { apiFetch } from "@/lib/api";
@@ -20,7 +20,8 @@ function formatPrice(n: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
     currency: "THB",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(n);
 }
 
@@ -647,9 +648,16 @@ const INITIAL_TERMS: TermsForm = {
 interface NewContractFormProps {
   onSuccess: (contractId: string) => void;
   onCancel: () => void;
+  prefilledCustomerId?: string | null;
+  prefilledSaleId?: string | null;
 }
 
-function NewContractForm({ onSuccess, onCancel }: NewContractFormProps) {
+function NewContractForm({
+  onSuccess,
+  onCancel,
+  prefilledCustomerId,
+  prefilledSaleId,
+}: NewContractFormProps) {
   const [step, setStep] = useState(1);
   const [customer, setCustomer] = useState<Customer | null>(null);
   // Track full Sale objects to compute suggested principal
@@ -658,6 +666,38 @@ function NewContractForm({ onSuccess, onCancel }: NewContractFormProps) {
   const [termsErrors, setTermsErrors] = useState<Partial<Record<keyof TermsForm, string>>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Load prefilled customer and sale if provided in query params
+  useEffect(() => {
+    if (!prefilledCustomerId) return;
+
+    async function loadPrefilled() {
+      try {
+        const customerRes = await apiFetch<{ data: Customer }>(`/customers/${prefilledCustomerId}`);
+        setCustomer(customerRes.data);
+
+        if (prefilledSaleId) {
+          const saleRes = await apiFetch<{ data: Sale }>(`/sales/${prefilledSaleId}`);
+          const sale = saleRes.data;
+
+          setSelectedSales([sale]);
+          setTerms({
+            total_principal: String(sale.financeAmount),
+            interest_rate: String(sale.interestRate ?? 0),
+            num_installments: String(sale.numInstallments ?? 12),
+            start_date: sale.saleDate ? new Date(sale.saleDate).toISOString().split("T")[0] : "",
+            notes: "",
+          });
+          setStep(3);
+        } else {
+          setStep(2);
+        }
+      } catch (err) {
+        console.error("Failed to load prefilled customer/sale", err);
+      }
+    }
+    loadPrefilled();
+  }, [prefilledCustomerId, prefilledSaleId]);
 
   const saleIds = selectedSales.map((s) => s.id);
 
@@ -811,8 +851,13 @@ function NewContractForm({ onSuccess, onCancel }: NewContractFormProps) {
 
 // ─── Contracts Page ───────────────────────────────────────────────────────────
 
-export default function ContractsPage() {
+function ContractsPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const openParam = searchParams.get("open");
+  const customerIdParam = searchParams.get("customer_id");
+  const saleIdParam = searchParams.get("sale_id");
+
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -821,6 +866,13 @@ export default function ContractsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+
+  // Auto-open modal when arriving via ?open=new
+  useEffect(() => {
+    if (openParam === "new") {
+      setShowNewModal(true);
+    }
+  }, [openParam]);
 
   const fetchContracts = useCallback(
     async (currentPage: number, status: string, q: string) => {
@@ -1033,8 +1085,26 @@ export default function ContractsPage() {
         <NewContractForm
           onSuccess={handleContractSuccess}
           onCancel={() => setShowNewModal(false)}
+          prefilledCustomerId={customerIdParam}
+          prefilledSaleId={saleIdParam}
         />
       </FormModal>
     </DashboardLayout>
+  );
+}
+
+export default function ContractsPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout>
+          <div className="px-8 py-8 animate-pulse text-gray-500">
+            Loading...
+          </div>
+        </DashboardLayout>
+      }
+    >
+      <ContractsPageContent />
+    </Suspense>
   );
 }

@@ -13,6 +13,15 @@ export const createSaleSchema = z
     finance_reference_number: z.string().optional(),
     financial_institution_id: z.string().uuid().optional(),
     addon_ids: z.array(z.string().uuid()).optional(),
+    addons: z
+      .array(
+        z.object({
+          id: z.string().uuid(),
+          billing_option: z.enum(["pay_separately", "included_in_finance", "free_gift"]),
+        })
+      )
+      .optional(),
+    commission_amount: z.number().nonnegative().optional(),
     notes: z.string().optional(),
   })
   .superRefine((data, ctx) => {

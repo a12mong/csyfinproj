@@ -8,13 +8,14 @@ export const createPaymentBodySchema = z
   .object({
     installment_id: z.string().uuid().optional(),
     contract_id: z.string().uuid().optional(),
+    sale_id: z.string().uuid().optional(),
     amount: z.coerce.number().positive(),
     payment_date: z.string().date(),
     payment_channel: paymentChannelEnum.default("cash"),
     notes: z.string().optional(),
   })
-  .refine((d) => d.installment_id || d.contract_id, {
-    message: "Either installment_id or contract_id is required",
+  .refine((d) => d.installment_id || d.contract_id || d.sale_id, {
+    message: "Either installment_id, contract_id, or sale_id is required",
     path: ["installment_id"],
   });
 

@@ -4,37 +4,14 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
-import type { Installment, PaginatedResponse } from "@csyfinproj/shared";
-
-const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
-  { value: "pending", label: "Pending" },
-  { value: "overdue", label: "Overdue" },
-  { value: "partially_paid", label: "Partially Paid" },
-  { value: "paid", label: "Paid" },
-];
-
-const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-yellow-50 text-yellow-700",
-  overdue: "bg-red-50 text-red-700",
-  partially_paid: "bg-orange-50 text-orange-700",
-  paid: "bg-green-50 text-green-700",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "Pending",
-  overdue: "Overdue",
-  partially_paid: "Partially Paid",
-  paid: "Paid",
-};
-
-const PAGE_SIZE = 20;
+import { toastSuccess, alertError } from "@/lib/swal";
 
 function formatPrice(n: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
     currency: "THB",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(n);
 }
 
@@ -46,297 +23,340 @@ function formatDate(dateStr: string) {
   });
 }
 
-function isOverdue(installment: Installment) {
-  return (
-    installment.status === "overdue" ||
-    (installment.status === "pending" &&
-      new Date(installment.dueDate) < new Date())
-  );
+interface CustomerSummary {
+  id: string;
+  name: string;
+  phone: string;
+  lineId?: string | null;
+  isLineLinked: boolean;
 }
 
-interface InstallmentWithSale extends Installment {
-  sale?: {
-    customerId: string;
-    customer?: { name: string; phone: string };
-  };
+interface ContractSummary {
+  id: string;
+  contract_number: string;
+  customer: CustomerSummary;
+  status: string;
+  total_amount: number;
+  total_paid: number;
+  total_outstanding: number;
+  installment_count: number;
+  installment_rate: number;
+  overdue_count: number;
+  total_overdue_amount: number;
+  next_due_date: string | null;
+  next_due_amount: number;
+  motorcycle: {
+    brand: string;
+    model: string;
+    chassisNumber: string;
+    color: string;
+  } | null;
+  installments: Array<{
+    id: string;
+    installmentNumber: number;
+    status: string;
+    amountDue: number;
+    amountPaid: number;
+    dueDate: string;
+  }>;
 }
 
-interface SummaryStats {
-  total: number;
-  overdue: number;
-  pending: number;
-  paid: number;
-  partiallyPaid: number;
-  totalOverdueAmount: number;
+interface DailySummary {
+  date: string;
+  total_expected: number;
+  total_collected: number;
+  remaining_outstanding: number;
 }
 
-export default function FinancePage() {
-  const [installments, setInstallments] = useState<InstallmentWithSale[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState("");
+interface MonthlySummary {
+  month: string;
+  total_expected: number;
+  total_paid: number;
+  total_outstanding: number;
+  overdue_installments_count: number;
+}
+
+export default function FinanceDashboard() {
+  const [contracts, setContracts] = useState<ContractSummary[]>([]);
+  const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
+  const [monthlySummary, setMonthlySummary] = useState<MonthlySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<SummaryStats | null>(null);
-  const [notifying, setNotifying] = useState(false);
-  const [notifyResult, setNotifyResult] = useState<string | null>(null);
+  const [reminderLoadingId, setReminderLoadingId] = useState<string | null>(null);
 
-  const fetchInstallments = useCallback(
-    async (currentPage: number, status: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams({ page: String(currentPage) });
-        if (status) params.set("status", status);
-
-        const res = await apiFetch<PaginatedResponse<InstallmentWithSale>>(
-          `/installments?${params}`
-        );
-        setInstallments(res.data);
-        setTotal(res.total);
-
-        // Build summary stats from first-page data when no filter
-        if (!status && currentPage === 1) {
-          const allRes = await apiFetch<PaginatedResponse<InstallmentWithSale>>(
-            `/installments?page=1`
-          );
-          const data = allRes.data;
-          const overdue = data.filter(
-            (i) => i.status === "overdue" || isOverdue(i)
-          );
-          setStats({
-            total: allRes.total,
-            overdue: overdue.length,
-            pending: data.filter((i) => i.status === "pending").length,
-            paid: data.filter((i) => i.status === "paid").length,
-            partiallyPaid: data.filter((i) => i.status === "partially_paid")
-              .length,
-            totalOverdueAmount: overdue.reduce(
-              (sum, i) => sum + (i.amountDue - i.amountPaid),
-              0
-            ),
-          });
-        }
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load installments"
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    fetchInstallments(page, statusFilter);
-  }, [page, statusFilter, fetchInstallments]);
-
-  function handleStatusFilter(value: string) {
-    setStatusFilter(value);
-    setPage(1);
-  }
-
-  async function handleSendReminders() {
-    setNotifying(true);
-    setNotifyResult(null);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await apiFetch<{ sent: number; failed: number }>(
-        "/notifications/send-reminders",
-        { method: "POST", body: JSON.stringify({ channel: "line" }) }
-      );
-      setNotifyResult(`Sent ${res.sent} reminder(s). Failed: ${res.failed}.`);
+      const [contractsRes, dailyRes, monthlyRes] = await Promise.all([
+        apiFetch<{ data: ContractSummary[] }>("/finance/contracts"),
+        apiFetch<{ data: DailySummary }>("/finance/daily-summary"),
+        apiFetch<{ data: MonthlySummary }>("/finance/monthly-summary"),
+      ]);
+      setContracts(contractsRes.data);
+      setDailySummary(dailyRes.data);
+      setMonthlySummary(monthlyRes.data);
     } catch (err) {
-      setNotifyResult(
-        err instanceof Error ? `Error: ${err.message}` : "Failed to send reminders"
-      );
+      setError(err instanceof Error ? err.message : "Failed to load finance data");
     } finally {
-      setNotifying(false);
+      setLoading(true); // wait, let's keep loading false
     }
-  }
+  }, []);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Set loading false
+  useEffect(() => {
+    loadData().finally(() => setLoading(false));
+  }, [loadData]);
+
+  const triggerReminder = async (installmentId: string, channel: "line" | "sms" | "email") => {
+    setReminderLoadingId(installmentId + "-" + channel);
+    try {
+      await apiFetch(`/finance/reminders/${installmentId}`, {
+        method: "POST",
+        body: JSON.stringify({ channel }),
+      });
+      toastSuccess(`Reminder sent via ${channel.toUpperCase()} successfully.`);
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : `Failed to send reminder via ${channel}`);
+    } finally {
+      setReminderLoadingId(null);
+    }
+  };
+
+  const totalOutstandingAll = contracts.reduce((sum, c) => sum + c.total_outstanding, 0);
+  const totalOverdueAll = contracts.reduce((sum, c) => sum + c.total_overdue_amount, 0);
+  const overdueContractsCount = contracts.filter((c) => c.overdue_count > 0).length;
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8">
+      <div className="px-8 py-8 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Finance</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Finance & Collections Dashboard</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Installment overview &amp; debt management
+              Real-time monitoring of lease contracts, repayments, and overdue alerts.
             </p>
           </div>
           <button
-            onClick={handleSendReminders}
-            disabled={notifying}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
+            onClick={() => {
+              setLoading(true);
+              loadData().finally(() => setLoading(false));
+            }}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            {notifying ? "Sending…" : "Send Overdue Reminders"}
+            Refresh Data
           </button>
         </div>
 
-        {notifyResult && (
-          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-            {notifyResult}
-          </div>
-        )}
-
-        {/* Summary Cards */}
-        {stats && (
-          <div className="grid grid-cols-2 gap-4 mb-6 sm:grid-cols-4">
-            <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
-              <p className="text-xs text-gray-500 mb-1">Total Installments</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-            </div>
-            <div className="bg-white rounded-xl border border-red-200 px-5 py-4">
-              <p className="text-xs text-red-500 mb-1">Overdue</p>
-              <p className="text-2xl font-bold text-red-600">{stats.overdue}</p>
-              <p className="text-xs text-red-400 mt-0.5">
-                {formatPrice(stats.totalOverdueAmount)}
-              </p>
-            </div>
-            <div className="bg-white rounded-xl border border-yellow-200 px-5 py-4">
-              <p className="text-xs text-yellow-600 mb-1">Pending</p>
-              <p className="text-2xl font-bold text-yellow-700">
-                {stats.pending}
-              </p>
-            </div>
-            <div className="bg-white rounded-xl border border-green-200 px-5 py-4">
-              <p className="text-xs text-green-600 mb-1">Paid</p>
-              <p className="text-2xl font-bold text-green-700">{stats.paid}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Filter */}
-        <div className="mb-4">
-          <select
-            value={statusFilter}
-            onChange={(e) => handleStatusFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
-        {/* Table */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* Collections Overview Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-5 shadow-sm">
+            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">Total Outstanding Debt</p>
+            <p className="text-2xl font-bold text-blue-900">{formatPrice(totalOutstandingAll)}</p>
+            <p className="text-xs text-blue-500 mt-1">Across {contracts.length} active lease contracts</p>
+          </div>
+
+          <div className="bg-gradient-to-br from-red-50 to-pink-50 border border-red-100 rounded-xl p-5 shadow-sm">
+            <p className="text-xs font-semibold text-red-600 uppercase tracking-wider mb-1">Total Overdue Amount</p>
+            <p className="text-2xl font-bold text-red-900">{formatPrice(totalOverdueAll)}</p>
+            <p className="text-xs text-red-500 mt-1">
+              {overdueContractsCount} contract{overdueContractsCount !== 1 ? "s" : ""} currently overdue
+            </p>
+          </div>
+
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-5 shadow-sm">
+            <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-1">Today's Collections</p>
+            <p className="text-2xl font-bold text-green-950">
+              {dailySummary ? formatPrice(dailySummary.total_collected) : "—"}
+            </p>
+            <p className="text-xs text-green-600 mt-1">
+              Expected: {dailySummary ? formatPrice(dailySummary.total_expected) : "—"}
+            </p>
+          </div>
+
+          <div className="bg-gradient-to-br from-purple-50 to-fuchsia-50 border border-purple-100 rounded-xl p-5 shadow-sm">
+            <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-1">This Month's Collections</p>
+            <p className="text-2xl font-bold text-purple-950">
+              {monthlySummary ? formatPrice(monthlySummary.total_paid) : "—"}
+            </p>
+            <p className="text-xs text-purple-600 mt-1">
+              Expected: {monthlySummary ? formatPrice(monthlySummary.total_expected) : "—"}
+            </p>
+          </div>
+        </div>
+
+        {/* Contract-centric Overview Grid */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900">Contract Collections Ledger</h3>
+            <span className="text-xs text-gray-500">Showing {contracts.length} active leases</span>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">
-                    #
-                  </th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">
-                    Due Date
-                  </th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">
-                    Amount Due
-                  </th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">
-                    Amount Paid
-                  </th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">
-                    Balance
-                  </th>
-                  <th className="text-center px-5 py-3 font-medium text-gray-500">
-                    Status
-                  </th>
-                  <th className="px-5 py-3" />
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Contract / Customer</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Vehicle Info</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">Repayment rate</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">Debt Overview</th>
+                  <th className="text-center px-5 py-3 font-medium text-gray-500">Overdue Stats</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Next Payment</th>
+                  <th className="px-5 py-3 text-center">Reminders & Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100">
                 {loading ? (
-                  Array.from({ length: 8 }).map((_, i) => (
-                    <tr key={i} className="border-b border-gray-50">
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i}>
                       {Array.from({ length: 7 }).map((__, j) => (
-                        <td key={j} className="px-5 py-3">
+                        <td key={j} className="px-5 py-4">
                           <div className="h-4 bg-gray-100 rounded animate-pulse" />
                         </td>
                       ))}
                     </tr>
                   ))
-                ) : installments.length === 0 ? (
+                ) : contracts.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={7}
-                      className="px-5 py-12 text-center text-sm text-gray-400"
-                    >
-                      No installments found.
+                    <td colSpan={7} className="px-5 py-12 text-center text-sm text-gray-400">
+                      No contracts currently found.
                     </td>
                   </tr>
                 ) : (
-                  installments.map((inst) => {
-                    const overdue = isOverdue(inst);
-                    const balance = inst.amountDue - inst.amountPaid;
+                  contracts.map((c) => {
+                    const oldestUnpaid = c.installments.find((inst) => inst.status !== "paid");
+                    const pctPaid = Math.round((c.total_paid / c.total_amount) * 100);
+
                     return (
-                      <tr
-                        key={inst.id}
-                        className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                          overdue ? "bg-red-50/40" : ""
-                        }`}
-                      >
-                        <td className="px-5 py-3 text-gray-500 font-mono text-xs">
-                          {inst.installmentNumber}
+                      <tr key={c.id} className={`hover:bg-gray-50/50 transition-colors ${c.overdue_count > 0 ? "bg-red-50/10" : ""}`}>
+                        {/* Contract / Customer */}
+                        <td className="px-5 py-4">
+                          <div>
+                            <Link href={`/contracts/${c.id}`} className="font-semibold text-primary-600 hover:text-primary-700 font-mono text-sm">
+                              {c.contract_number}
+                            </Link>
+                            <p className="text-sm font-semibold text-gray-900 mt-1">{c.customer.name}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-xs text-gray-500">{c.customer.phone}</span>
+                              {c.customer.isLineLinked ? (
+                                <span className="inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200">
+                                  LINE Linked
+                                </span>
+                              ) : (
+                                <span className="inline-flex px-1.5 py-0.5 rounded-full text-[10px] bg-gray-50 text-gray-400 border border-gray-200">
+                                  No LINE
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </td>
-                        <td
-                          className={`px-5 py-3 ${
-                            overdue
-                              ? "text-red-600 font-medium"
-                              : "text-gray-600"
-                          }`}
-                        >
-                          {formatDate(inst.dueDate)}
-                          {overdue && (
-                            <span className="ml-1.5 text-xs text-red-500">
-                              &#9888;
+
+                        {/* Vehicle Info */}
+                        <td className="px-5 py-4 text-xs text-gray-600">
+                          {c.motorcycle ? (
+                            <div>
+                              <p className="font-semibold text-gray-800">
+                                {c.motorcycle.brand} {c.motorcycle.model}
+                              </p>
+                              <p className="font-mono text-gray-500 mt-0.5">{c.motorcycle.chassisNumber}</p>
+                              <p className="text-gray-400">{c.motorcycle.color}</p>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+
+                        {/* Repayment rate */}
+                        <td className="px-5 py-4 text-right">
+                          <p className="font-semibold text-gray-900">{formatPrice(c.installment_rate)}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">/ month</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{c.installment_count} periods</p>
+                        </td>
+
+                        {/* Debt Overview */}
+                        <td className="px-5 py-4 text-right">
+                          <div className="inline-block text-right">
+                            <p className="font-semibold text-gray-900">{formatPrice(c.total_outstanding)}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">outstanding</p>
+                            <div className="w-24 bg-gray-100 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                              <div
+                                className="bg-primary-600 h-1.5 rounded-full transition-all"
+                                style={{ width: `${pctPaid}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-gray-400 mt-1 block">{pctPaid}% Paid ({formatPrice(c.total_paid)})</span>
+                          </div>
+                        </td>
+
+                        {/* Overdue Stats */}
+                        <td className="px-5 py-4 text-center">
+                          {c.overdue_count > 0 ? (
+                            <div>
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 animate-pulse">
+                                {c.overdue_count} Overdue
+                              </span>
+                              <p className="text-xs text-red-600 font-bold mt-1">
+                                {formatPrice(c.total_overdue_amount)}
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                              Good Standing
                             </span>
                           )}
                         </td>
-                        <td className="px-5 py-3 text-right font-medium text-gray-900">
-                          {formatPrice(inst.amountDue)}
+
+                        {/* Next Payment */}
+                        <td className="px-5 py-4 text-xs">
+                          {c.next_due_date ? (
+                            <div>
+                              <p className="font-semibold text-gray-900">{formatDate(c.next_due_date)}</p>
+                              <p className="text-gray-500 mt-0.5">{formatPrice(c.next_due_amount)}</p>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">Paid off</span>
+                          )}
                         </td>
-                        <td className="px-5 py-3 text-right text-gray-600">
-                          {formatPrice(inst.amountPaid)}
-                        </td>
-                        <td
-                          className={`px-5 py-3 text-right font-medium ${
-                            balance > 0 ? "text-red-600" : "text-green-600"
-                          }`}
-                        >
-                          {formatPrice(balance)}
-                        </td>
-                        <td className="px-5 py-3 text-center">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              STATUS_STYLES[inst.status] ??
-                              "bg-gray-100 text-gray-500"
-                            }`}
-                          >
-                            {STATUS_LABELS[inst.status] ?? inst.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          {inst.sale?.customerId && (
-                            <Link
-                              href={`/finance/${inst.sale.customerId}`}
-                              className="text-primary-600 hover:text-primary-700 text-xs font-medium"
-                            >
-                              Customer
-                            </Link>
+
+                        {/* Reminders & Actions */}
+                        <td className="px-5 py-4 text-center">
+                          {oldestUnpaid ? (
+                            <div className="inline-flex flex-col gap-1.5 max-w-[120px] mx-auto">
+                              <button
+                                onClick={() => triggerReminder(oldestUnpaid.id, "line")}
+                                disabled={!c.customer.isLineLinked || reminderLoadingId !== null}
+                                className={`px-2.5 py-1 text-xs font-semibold rounded-md border text-center transition-colors ${
+                                  c.customer.isLineLinked
+                                    ? "bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                                    : "bg-gray-50 border-gray-150 text-gray-400 cursor-not-allowed"
+                                }`}
+                              >
+                                {reminderLoadingId === `${oldestUnpaid.id}-line` ? "Sending..." : "Send LINE"}
+                              </button>
+                              <button
+                                onClick={() => triggerReminder(oldestUnpaid.id, "sms")}
+                                disabled={reminderLoadingId !== null}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-md border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 text-center transition-colors"
+                              >
+                                {reminderLoadingId === `${oldestUnpaid.id}-sms` ? "Sending..." : "Send SMS"}
+                              </button>
+                              <button
+                                onClick={() => triggerReminder(oldestUnpaid.id, "email")}
+                                disabled={reminderLoadingId !== null}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-center transition-colors"
+                              >
+                                {reminderLoadingId === `${oldestUnpaid.id}-email` ? "Sending..." : "Send Email"}
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">None</span>
                           )}
                         </td>
                       </tr>
@@ -346,32 +366,6 @@ export default function FinancePage() {
               </tbody>
             </table>
           </div>
-
-          {/* Pagination */}
-          {!loading && totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50">
-              <span className="text-xs text-gray-500">
-                Page {page} of {totalPages} &mdash; {total} installment
-                {total !== 1 ? "s" : ""}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
-                >
-                  Previous
-                </button>
-                <button
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </DashboardLayout>

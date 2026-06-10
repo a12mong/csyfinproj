@@ -14,6 +14,7 @@ import type {
   Sale,
   SaleWithInstallments,
   PaginatedResponse,
+  FinancialInstitution,
 } from "@csyfinproj/shared";
 
 const STATUS_OPTIONS = [
@@ -37,7 +38,8 @@ function formatPrice(n: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
     currency: "THB",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(n);
 }
 
@@ -271,13 +273,17 @@ function StepMotorcycle({
 
 // ─── Step 3 — Pricing ─────────────────────────────────────────────────────────
 
-type PaymentMethod = "cash" | "installment";
+type PaymentMethod = "cash" | "installment" | "finance_company";
 
 interface PricingForm {
   payment_method: PaymentMethod;
   total_price: string;
   down_payment: string;
   notes: string;
+  finance_company_name?: string;
+  commission_amount?: string;
+  financial_institution_id?: string;
+  finance_reference_number?: string;
 }
 
 // Display labels — includes finance_company for backward-compat display in table
@@ -309,15 +315,38 @@ function StepPricing({
   const [buyerSearch, setBuyerSearch] = useState("");
   const [buyerCandidates, setBuyerCandidates] = useState<Customer[]>([]);
   const [buyerLoading, setBuyerLoading] = useState(false);
+  const [institutions, setInstitutions] = useState<FinancialInstitution[]>([]);
+
+  useEffect(() => {
+    apiFetch<{ data: FinancialInstitution[] }>("/financial-institutions?active=true")
+      .then((res) => setInstitutions(res.data))
+      .catch(() => setInstitutions([]));
+  }, []);
 
   const set = (field: keyof PricingForm, value: string) =>
     onChange({ ...form, [field]: value });
 
   const isCash = form.payment_method === "cash";
-  const requiresBuyer = isCash && invoiceCustomer?.type === "finance";
+  const requiresBuyer = invoiceCustomer?.type === "finance";
   const totalPrice = parseFloat(form.total_price) || 0;
   const downPayment = parseFloat(form.down_payment) || 0;
   const financeAmount = Math.max(0, totalPrice - downPayment);
+  const effectiveTotalPrice = totalPrice > 0 ? totalPrice : Number(motorcycle.sellingPrice);
+
+  // Pre-fill finance company name if invoice customer is type finance
+  useEffect(() => {
+    if (
+      form.payment_method === "finance_company" &&
+      invoiceCustomer &&
+      invoiceCustomer.type === "finance" &&
+      !form.finance_company_name
+    ) {
+      onChange({
+        ...form,
+        finance_company_name: invoiceCustomer.name,
+      });
+    }
+  }, [form.payment_method, invoiceCustomer]);
 
   const fetchBuyerCandidates = useCallback(async (q: string) => {
     setBuyerLoading(true);
@@ -338,12 +367,18 @@ function StepPricing({
     fetchBuyerCandidates(buyerSearch);
   }, [buyerSearch, requiresBuyer, fetchBuyerCandidates]);
 
-  // Clear buyer customer when switching away from cash or invoice customer changes
+  // Synchronize buyer customer when requiresBuyer is false
   useEffect(() => {
     if (!requiresBuyer) {
-      onBuyerCustomerChange(null);
+      if (buyerCustomer?.id !== invoiceCustomer?.id) {
+        onBuyerCustomerChange(invoiceCustomer);
+      }
+    } else {
+      if (buyerCustomer?.id === invoiceCustomer?.id) {
+        onBuyerCustomerChange(null);
+      }
     }
-  }, [requiresBuyer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [requiresBuyer, invoiceCustomer, onBuyerCustomerChange, buyerCustomer]);
 
   return (
     <div className="space-y-4">
@@ -355,11 +390,22 @@ function StepPricing({
           Payment Method
         </label>
         <div className="flex gap-2">
-          {(["cash", "installment"] as PaymentMethod[]).map((method) => (
+          {(["cash", "installment", "finance_company"] as PaymentMethod[]).map((method) => (
             <button
               key={method}
               type="button"
-              onClick={() => set("payment_method", method)}
+              onClick={() => {
+                const isCashVal = method === "cash";
+                const totalPriceVal = parseFloat(form.total_price) || Number(motorcycle.sellingPrice);
+                const nextDown = isCashVal
+                  ? String(totalPriceVal)
+                  : String(Math.round(totalPriceVal * 0.25));
+                onChange({
+                  ...form,
+                  payment_method: method,
+                  down_payment: nextDown,
+                });
+              }}
               className={`flex-1 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
                 form.payment_method === method
                   ? "border-primary-500 bg-primary-50 text-primary-700"
@@ -383,11 +429,21 @@ function StepPricing({
       )}
 
       {/* Installment notice */}
-      {!isCash && (
+      {form.payment_method === "installment" && (
         <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
           <span className="text-blue-500 text-base leading-none">ℹ</span>
           <p className="text-sm text-blue-700">
             Installment sales create contracts with the store (CSY).
+          </p>
+        </div>
+      )}
+
+      {/* Finance Company notice */}
+      {form.payment_method === "finance_company" && (
+        <div className="flex items-center gap-2 rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2.5">
+          <span className="text-indigo-500 text-base leading-none">ℹ</span>
+          <p className="text-sm text-indigo-700">
+            Finance Company sales invoice the financial institution on behalf of the customer.
           </p>
         </div>
       )}
@@ -448,6 +504,88 @@ function StepPricing({
         </div>
       )}
 
+      {/* Finance Company Specific Fields */}
+      {form.payment_method === "finance_company" && (
+        <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3.5 space-y-3">
+          <h4 className="text-xs font-semibold text-indigo-900 border-b border-indigo-100 pb-1.5 uppercase tracking-wider">
+            Finance Company Details
+          </h4>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Finance Company Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.finance_company_name || ""}
+                onChange={(e) => set("finance_company_name", e.target.value)}
+                placeholder="e.g. Aeon, Krungsri Auto"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+              {errors.finance_company_name && (
+                <p className="mt-1 text-xs text-red-600">{errors.finance_company_name}</p>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Institution Code (Optional)
+              </label>
+              <select
+                value={form.financial_institution_id || ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const inst = institutions.find((i) => i.id === val);
+                  onChange({
+                    ...form,
+                    financial_institution_id: val,
+                    finance_company_name: inst ? inst.name : form.finance_company_name,
+                  });
+                }}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                <option value="">-- Select Code --</option>
+                {institutions.map((inst) => (
+                  <option key={inst.id} value={inst.id}>
+                    {inst.name} ({inst.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Finance Reference Number (Optional)
+              </label>
+              <input
+                type="text"
+                value={form.finance_reference_number || ""}
+                onChange={(e) => set("finance_reference_number", e.target.value)}
+                placeholder="Reference No."
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Commission Amount (THB) (Optional)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={form.commission_amount || ""}
+                onChange={(e) => set("commission_amount", e.target.value)}
+                placeholder="0"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Price fields */}
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -458,7 +596,24 @@ function StepPricing({
             type="number"
             min={1}
             value={form.total_price}
-            onChange={(e) => set("total_price", e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              const numericVal = parseFloat(val) || 0;
+              let nextDown = form.down_payment;
+              if (form.payment_method === "cash") {
+                nextDown = val;
+              } else {
+                const currentDown = parseFloat(form.down_payment) || 0;
+                if (currentDown > numericVal) {
+                  nextDown = val;
+                }
+              }
+              onChange({
+                ...form,
+                total_price: val,
+                down_payment: nextDown,
+              });
+            }}
             placeholder={String(motorcycle.sellingPrice)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
@@ -474,15 +629,53 @@ function StepPricing({
             type="number"
             min={0}
             value={form.down_payment}
-            onChange={(e) => set("down_payment", e.target.value)}
+            disabled={isCash}
+            onChange={(e) => {
+              const val = e.target.value;
+              const numericVal = parseFloat(val) || 0;
+              const currentTotal = parseFloat(form.total_price) || 0;
+              let nextTotal = form.total_price;
+              
+              if (numericVal > currentTotal) {
+                nextTotal = val;
+              }
+              
+              onChange({
+                ...form,
+                down_payment: val,
+                total_price: nextTotal,
+              });
+            }}
             placeholder="0"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:bg-gray-100 disabled:text-gray-500"
           />
           {errors.down_payment && (
             <p className="mt-1 text-xs text-red-600">{errors.down_payment}</p>
           )}
         </div>
       </div>
+
+      {/* Interactive Range Slider for Down Payment */}
+      {!isCash && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+          <div className="flex justify-between items-center text-xs text-gray-500">
+            <span>ดาวน์ 0% (0 THB)</span>
+            <span className="font-medium text-primary-700 bg-primary-50 px-2 py-0.5 rounded-full">
+              สัดส่วนดาวน์: {effectiveTotalPrice > 0 ? ((downPayment / effectiveTotalPrice) * 100).toFixed(0) : 0}%
+            </span>
+            <span>ดาวน์ 100% ({formatPrice(effectiveTotalPrice)})</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={effectiveTotalPrice}
+            step={100}
+            value={downPayment}
+            onChange={(e) => set("down_payment", e.target.value)}
+            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+          />
+        </div>
+      )}
 
       {/* Finance amount for installment */}
       {!isCash && financeAmount > 0 && (
@@ -514,31 +707,41 @@ function StepPricing({
 // ─── Step 4 — Add-ons ─────────────────────────────────────────────────────────
 
 function StepAddons({
+  addons,
+  loading,
   selected,
   onToggle,
+  billingOptions,
+  onChangeBillingOption,
+  paymentMethod,
 }: {
+  addons: Addon[];
+  loading: boolean;
   selected: string[];
   onToggle: (id: string) => void;
+  billingOptions: Record<string, "pay_separately" | "included_in_finance" | "free_gift">;
+  onChangeBillingOption: (id: string, option: "pay_separately" | "included_in_finance" | "free_gift") => void;
+  paymentMethod: string;
 }) {
-  const [addons, setAddons] = useState<Addon[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    apiFetch<{ data: Addon[] }>("/addons")
-      .then((res) => setAddons(res.data.filter((a) => a.active)))
-      .catch(() => setAddons([]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const total = addons
+  const totalAddonsPrice = addons
     .filter((a) => selected.includes(a.id))
-    .reduce((sum, a) => sum + a.price, 0);
+    .reduce((sum, a) => {
+      const option = billingOptions[a.id] || "pay_separately";
+      return option === "free_gift" ? sum : sum + Number(a.price);
+    }, 0);
+
+  const paySeparatelyTotal = addons
+    .filter((a) => selected.includes(a.id) && (billingOptions[a.id] || "pay_separately") === "pay_separately")
+    .reduce((sum, a) => sum + Number(a.price), 0);
+
+  const includedInFinanceTotal = addons
+    .filter((a) => selected.includes(a.id) && (billingOptions[a.id] || "pay_separately") === "included_in_finance")
+    .reduce((sum, a) => sum + Number(a.price), 0);
 
   return (
     <div>
       <h3 className="text-sm font-semibold text-gray-900 mb-0.5">Add-on Services</h3>
-      <p className="text-xs text-gray-500 mb-3">Optional. Select any add-ons to include.</p>
+      <p className="text-xs text-gray-500 mb-3">Optional. Select any add-ons to include and specify payment options.</p>
       {loading ? (
         Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse mb-2" />
@@ -546,21 +749,24 @@ function StepAddons({
       ) : addons.length === 0 ? (
         <p className="text-sm text-gray-400 py-4 text-center">No add-ons available.</p>
       ) : (
-        <div className="space-y-1.5 max-h-52 overflow-y-auto">
+        <div className="space-y-1.5 max-h-80 overflow-y-auto">
           {addons.map((addon) => {
             const isSelected = selected.includes(addon.id);
+            const billingOption = billingOptions[addon.id] || "pay_separately";
             return (
-              <button
+              <div
                 key={addon.id}
-                type="button"
-                onClick={() => onToggle(addon.id)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                className={`p-3 rounded-lg border transition-colors ${
                   isSelected
-                    ? "border-primary-500 bg-primary-50"
+                    ? "border-primary-500 bg-primary-50/50"
                     : "border-gray-200 hover:border-gray-300"
                 }`}
               >
-                <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => onToggle(addon.id)}
+                  className="w-full text-left flex items-center justify-between"
+                >
                   <div className="flex items-center gap-2.5">
                     <div
                       className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
@@ -581,15 +787,82 @@ function StepAddons({
                   <span className="text-sm font-semibold text-gray-900 shrink-0 ml-2">
                     {formatPrice(addon.price)}
                   </span>
-                </div>
-              </button>
+                </button>
+
+                {isSelected && (
+                  <div className="mt-3 pt-2.5 border-t border-primary-100 flex items-center justify-between gap-4 text-xs">
+                    <span className="text-gray-500 font-medium">รูปแบบการจ่ายเงิน:</span>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onChangeBillingOption(addon.id, "pay_separately");
+                        }}
+                        className={`px-2.5 py-1 rounded border text-xs font-semibold transition-colors ${
+                          billingOption === "pay_separately"
+                            ? "bg-primary-600 border-primary-600 text-white"
+                            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        จ่ายแยก
+                      </button>
+                      {paymentMethod !== "cash" && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onChangeBillingOption(addon.id, "included_in_finance");
+                          }}
+                          className={`px-2.5 py-1 rounded border text-xs font-semibold transition-colors ${
+                            billingOption === "included_in_finance"
+                              ? "bg-primary-600 border-primary-600 text-white"
+                              : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                          }`}
+                        >
+                          รวมในยอดจัด
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onChangeBillingOption(addon.id, "free_gift");
+                        }}
+                        className={`px-2.5 py-1 rounded border text-xs font-semibold transition-colors ${
+                          billingOption === "free_gift"
+                            ? "bg-primary-600 border-primary-600 text-white"
+                            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        แถมฟรี (ส่วนลด)
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
       )}
       {selected.length > 0 && (
-        <div className="mt-3 text-sm font-semibold text-gray-900 text-right">
-          Add-ons total: {formatPrice(total)}
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs space-y-1.5">
+          <div className="flex justify-between font-semibold text-gray-700">
+            <span>มูลค่ารวม (Add-ons total):</span>
+            <span className="text-sm font-bold text-gray-900">{formatPrice(totalAddonsPrice)}</span>
+          </div>
+          {paySeparatelyTotal > 0 && (
+            <div className="flex justify-between text-gray-500">
+              <span>จ่ายแยก (Pay separately):</span>
+              <span>{formatPrice(paySeparatelyTotal)}</span>
+            </div>
+          )}
+          {includedInFinanceTotal > 0 && (
+            <div className="flex justify-between text-gray-500">
+              <span>รวมในยอดจัด (Finance payout):</span>
+              <span>{formatPrice(includedInFinanceTotal)}</span>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -603,17 +876,26 @@ function StepConfirm({
   buyerCustomer,
   motorcycle,
   pricing,
+  addons,
   addonIds,
+  addonBillingOptions,
 }: {
   invoiceCustomer: Customer;
   buyerCustomer: Customer | null;
   motorcycle: Motorcycle;
   pricing: PricingForm;
+  addons: Addon[];
   addonIds: string[];
+  addonBillingOptions: Record<string, string>;
 }) {
   const totalPrice = parseFloat(pricing.total_price) || 0;
   const downPayment = parseFloat(pricing.down_payment) || 0;
-  const financeAmount = Math.max(0, totalPrice - downPayment);
+
+  const baseFinanceAmount = Math.max(0, totalPrice - downPayment);
+  const addonsFinanceAmount = addons
+    .filter((a) => addonIds.includes(a.id) && (addonBillingOptions[a.id] || "pay_separately") === "included_in_finance")
+    .reduce((sum, a) => sum + Number(a.price), 0);
+  const totalFinanceAmount = baseFinanceAmount + addonsFinanceAmount;
 
   return (
     <div>
@@ -640,7 +922,7 @@ function StepConfirm({
         </div>
 
         {/* Buyer Customer (only shown when applicable) */}
-        {buyerCustomer && (
+        {buyerCustomer && buyerCustomer.id !== invoiceCustomer.id && (
           <div className="px-4 py-3">
             <p className="text-xs text-gray-500 mb-1">Buyer Customer</p>
             <div className="flex items-center gap-2">
@@ -676,11 +958,31 @@ function StepConfirm({
             <span className="text-gray-500">Down payment</span>
             <span className="font-medium">{formatPrice(downPayment)}</span>
           </div>
-          {pricing.payment_method !== "cash" && financeAmount > 0 && (
+          {pricing.payment_method !== "cash" && totalFinanceAmount > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-500">Finance amount</span>
-              <span className="font-medium">{formatPrice(financeAmount)}</span>
+              <span className="font-medium">{formatPrice(totalFinanceAmount)}</span>
             </div>
+          )}
+          {pricing.payment_method === "finance_company" && (
+            <>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Finance Company</span>
+                <span className="font-medium">{pricing.finance_company_name}</span>
+              </div>
+              {pricing.commission_amount && parseFloat(pricing.commission_amount) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Commission</span>
+                  <span className="font-medium">{formatPrice(parseFloat(pricing.commission_amount))}</span>
+                </div>
+              )}
+              {pricing.finance_reference_number && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Finance Ref #</span>
+                  <span className="font-medium">{pricing.finance_reference_number}</span>
+                </div>
+              )}
+            </>
           )}
           {addonIds.length > 0 && (
             <div className="flex justify-between">
@@ -707,6 +1009,10 @@ const INITIAL_PRICING: PricingForm = {
   total_price: "",
   down_payment: "",
   notes: "",
+  finance_company_name: "",
+  commission_amount: "",
+  financial_institution_id: "",
+  finance_reference_number: "",
 };
 
 interface NewSaleFormProps {
@@ -722,10 +1028,22 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
   const [motorcycle, setMotorcycle] = useState<Motorcycle | null>(null);
   const [pricing, setPricing] = useState<PricingForm>(INITIAL_PRICING);
   const [addonIds, setAddonIds] = useState<string[]>([]);
+  const [addonBillingOptions, setAddonBillingOptions] = useState<Record<string, "pay_separately" | "included_in_finance" | "free_gift">>({});
+  const [addons, setAddons] = useState<Addon[]>([]);
+  const [addonsLoading, setAddonsLoading] = useState(false);
   const [pricingErrors, setPricingErrors] = useState<Partial<PricingForm>>({});
   const [buyerCustomerError, setBuyerCustomerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [createdSale, setCreatedSale] = useState<SaleWithInstallments | null>(null);
+
+  useEffect(() => {
+    setAddonsLoading(true);
+    apiFetch<{ data: Addon[] }>("/addons")
+      .then((res) => setAddons(res.data.filter((a) => a.active)))
+      .catch(() => setAddons([]))
+      .finally(() => setAddonsLoading(false));
+  }, []);
 
   // Pre-fill customer when navigated from customer detail page
   useEffect(() => {
@@ -739,10 +1057,48 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     }
   }, [prefilledCustomerId, customer]);
 
+  // Automatically pre-fill total price and cash down payment when motorcycle is selected
+  useEffect(() => {
+    if (motorcycle) {
+      setPricing((prev) => {
+        const priceStr = String(motorcycle.sellingPrice);
+        const numericPrice = Number(motorcycle.sellingPrice);
+        return {
+          ...prev,
+          total_price: priceStr,
+          down_payment:
+            prev.payment_method === "cash"
+              ? priceStr
+              : String(Math.round(numericPrice * 0.25)),
+        };
+      });
+    } else {
+      setPricing((prev) => ({
+        ...prev,
+        total_price: "",
+        down_payment: "",
+      }));
+    }
+  }, [motorcycle]);
+
   function toggleAddon(id: string) {
-    setAddonIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setAddonIds((prev) => {
+      const isSelected = prev.includes(id);
+      if (isSelected) {
+        setAddonBillingOptions((prevOptions) => {
+          const next = { ...prevOptions };
+          delete next[id];
+          return next;
+        });
+        return prev.filter((x) => x !== id);
+      } else {
+        setAddonBillingOptions((prevOptions) => ({
+          ...prevOptions,
+          [id]: "pay_separately",
+        }));
+        return [...prev, id];
+      }
+    });
   }
 
   function validatePricing(): boolean {
@@ -755,12 +1111,23 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     if (pricing.down_payment !== "" && (isNaN(downPayment) || downPayment < 0)) {
       errors.down_payment = "Enter a valid down payment";
     }
+
+    if (pricing.payment_method === "finance_company") {
+      if (!pricing.finance_company_name?.trim()) {
+        errors.finance_company_name = "Finance company name is required";
+      }
+      const commission = parseFloat(pricing.commission_amount || "0");
+      if (pricing.commission_amount !== "" && (isNaN(commission) || commission < 0)) {
+        errors.commission_amount = "Enter a valid commission amount";
+      }
+    }
+
     setPricingErrors(errors);
 
-    // Buyer customer required when invoice customer is a finance company paying cash
-    const requiresBuyer = pricing.payment_method === "cash" && customer?.type === "finance";
+    // Buyer customer required when invoice customer is a finance company
+    const requiresBuyer = customer?.type === "finance";
     if (requiresBuyer && !buyerCustomer) {
-      setBuyerCustomerError("Select the actual buyer customer for this finance company invoice");
+      setBuyerCustomerError("Select the actual buyer customer");
       return false;
     }
     setBuyerCustomerError(null);
@@ -790,7 +1157,24 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
       if (buyerCustomer) {
         body.buyer_customer_id = buyerCustomer.id;
       }
-      if (addonIds.length > 0) body.addon_ids = addonIds;
+      if (pricing.payment_method === "finance_company") {
+        body.finance_company_name = pricing.finance_company_name;
+        if (pricing.commission_amount) {
+          body.commission_amount = parseFloat(pricing.commission_amount);
+        }
+        if (pricing.financial_institution_id) {
+          body.financial_institution_id = pricing.financial_institution_id;
+        }
+        if (pricing.finance_reference_number) {
+          body.finance_reference_number = pricing.finance_reference_number;
+        }
+      }
+      if (addonIds.length > 0) {
+        body.addons = addonIds.map((id) => ({
+          id,
+          billing_option: addonBillingOptions[id] || "pay_separately",
+        }));
+      }
       if (pricing.notes.trim()) body.notes = pricing.notes.trim();
 
       const res = await apiFetch<{ data: SaleWithInstallments }>("/sales", {
@@ -798,7 +1182,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
         body: JSON.stringify(body),
       });
       toastSuccess("Sale created successfully");
-      onSuccess(res.data.id);
+      setCreatedSale(res.data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to create sale";
       setSubmitError(msg);
@@ -807,15 +1191,97 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     }
   }
 
-  const requiresBuyerCustomer = pricing.payment_method === "cash" && customer?.type === "finance";
+  const requiresBuyerCustomer = customer?.type === "finance";
   const canAdvance =
     (step === 1 && customer !== null) ||
     (step === 2 && motorcycle !== null) ||
     (step === 3 && (!requiresBuyerCustomer || buyerCustomer !== null)) ||
     step === 4;
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+      e.preventDefault();
+    }
+  };
+
+  if (createdSale) {
+    const totalPrice = createdSale.totalPrice || 0;
+    const downPayment = createdSale.downPayment || 0;
+    const financeAmount = createdSale.financeAmount || 0;
+
+    return (
+      <div className="text-center py-6">
+        <div className="w-16 h-16 bg-green-50 border-2 border-green-200 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl font-bold animate-bounce">
+          ✓
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">
+          สร้างรายการขายสำเร็จ! (Sale Created Successfully)
+        </h3>
+        <p className="text-sm text-gray-500 mb-6">
+          รายการขายนี้ได้รับการบันทึกเรียบร้อยแล้ว
+        </p>
+
+        <div className="bg-gray-50 rounded-xl border border-gray-200 divide-y divide-gray-200 text-left max-w-md mx-auto mb-6 text-sm">
+          <div className="px-4 py-3 flex justify-between">
+            <span className="text-gray-500">รหัสการขาย (Sale ID)</span>
+            <span className="font-mono text-xs text-gray-900 bg-gray-100 px-1 py-0.5 rounded">{createdSale.id}</span>
+          </div>
+          <div className="px-4 py-3 flex justify-between">
+            <span className="text-gray-500">ลูกค้า (Customer)</span>
+            <span className="font-medium text-gray-900">{customer?.name}</span>
+          </div>
+          {buyerCustomer && buyerCustomer.id !== customer?.id && (
+            <div className="px-4 py-3 flex justify-between">
+              <span className="text-gray-500">ผู้เช่าซื้อ (Buyer Customer)</span>
+              <span className="font-medium text-gray-900">{buyerCustomer.name}</span>
+            </div>
+          )}
+          <div className="px-4 py-3 flex justify-between">
+            <span className="text-gray-500">รถจักรยานยนต์ (Motorcycle)</span>
+            <span className="font-medium text-gray-900">{motorcycle?.brand} {motorcycle?.model}</span>
+          </div>
+          <div className="px-4 py-3 flex justify-between">
+            <span className="text-gray-500">รูปแบบการชำระ (Payment Method)</span>
+            <span className="font-medium text-gray-900 capitalize">{pricing.payment_method}</span>
+          </div>
+          <div className="px-4 py-3 flex justify-between">
+            <span className="text-gray-500">ราคาสุทธิ (Total Price)</span>
+            <span className="font-semibold text-gray-900">{formatPrice(totalPrice)}</span>
+          </div>
+          <div className="px-4 py-3 flex justify-between">
+            <span className="text-gray-500">เงินดาวน์ (Down Payment)</span>
+            <span className="font-medium text-gray-900">{formatPrice(downPayment)}</span>
+          </div>
+          {pricing.payment_method !== "cash" && (
+            <div className="px-4 py-3 flex justify-between">
+              <span className="text-gray-500">ยอดจัดไฟแนนซ์ (Finance Amount)</span>
+              <span className="font-semibold text-primary-700">{formatPrice(financeAmount)}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto mt-6">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex-1"
+          >
+            ปิดหน้าต่างนี้ (Close)
+          </button>
+          <button
+            type="button"
+            onClick={() => onSuccess(createdSale.id)}
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors flex-1 shadow-sm font-semibold"
+          >
+            ยืนยัน & ไปหน้ารายละเอียดการขาย
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
       <StepIndicator current={step} />
 
       {step === 1 && <StepCustomer selected={customer} onSelect={setCustomer} />}
@@ -832,14 +1298,28 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
           buyerCustomerError={buyerCustomerError}
         />
       )}
-      {step === 4 && <StepAddons selected={addonIds} onToggle={toggleAddon} />}
+      {step === 4 && (
+        <StepAddons
+          addons={addons}
+          loading={addonsLoading}
+          selected={addonIds}
+          onToggle={toggleAddon}
+          billingOptions={addonBillingOptions}
+          onChangeBillingOption={(id, option) =>
+            setAddonBillingOptions((prev) => ({ ...prev, [id]: option }))
+          }
+          paymentMethod={pricing.payment_method}
+        />
+      )}
       {step === 5 && customer && motorcycle && (
         <StepConfirm
           invoiceCustomer={customer}
           buyerCustomer={buyerCustomer}
           motorcycle={motorcycle}
           pricing={pricing}
+          addons={addons}
           addonIds={addonIds}
+          addonBillingOptions={addonBillingOptions}
         />
       )}
 
@@ -944,6 +1424,11 @@ function SalesPageInner() {
   function handleSaleSuccess(saleId: string) {
     setShowNewModal(false);
     router.push(`/sales/${saleId}`);
+  }
+
+  function handleCancelModal() {
+    setShowNewModal(false);
+    fetchSales(page, statusFilter);
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -1101,13 +1586,13 @@ function SalesPageInner() {
       {/* New Sale Modal */}
       <FormModal
         open={showNewModal}
-        onClose={() => setShowNewModal(false)}
+        onClose={handleCancelModal}
         title="New Sale"
         maxWidth="max-w-2xl"
       >
         <NewSaleForm
           onSuccess={handleSaleSuccess}
-          onCancel={() => setShowNewModal(false)}
+          onCancel={handleCancelModal}
           prefilledCustomerId={prefilledCustomerId}
         />
       </FormModal>

@@ -66,6 +66,27 @@ function randomIdCard() {
 async function main() {
   console.log("Starting DB seed...");
 
+  console.log("Cleaning up existing database records...");
+  await prisma.notificationLog.deleteMany({});
+  await prisma.taxInvoice.deleteMany({});
+  await prisma.payment.deleteMany({});
+  await prisma.installment.deleteMany({});
+  await prisma.contractSale.deleteMany({});
+  await prisma.contractParty.deleteMany({});
+  await prisma.contract.deleteMany({});
+  await prisma.saleAddon.deleteMany({});
+  await prisma.sale.deleteMany({});
+  await prisma.motorcycle.deleteMany({});
+  await prisma.deliveryNoteItem.deleteMany({});
+  await prisma.deliveryNote.deleteMany({});
+  await prisma.customer.deleteMany({});
+  await prisma.addon.deleteMany({});
+  await prisma.userPermission.deleteMany({});
+  await prisma.user.deleteMany({});
+  await prisma.financialInstitution.deleteMany({});
+
+  console.log("Cleanup completed.");
+
   // 1. Users
   const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@csyfinproj.local";
   const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "Admin1234!";
@@ -110,12 +131,26 @@ async function main() {
     dbUsers.push(user);
   }
 
-  // 2. Addons
+  // 2. Financial Institutions
+  console.log("Seeding Financial Institutions...");
+  const financialInstitutions = [
+    { name: "กรุงศรี ออโต้ (Krungsri Auto)", code: "BAY", active: true },
+    { name: "ธนาคารไทยพาณิชย์ (SCB)", code: "SCB", active: true },
+    { name: "ธนาคารกสิกรไทย (KBANK)", code: "KBANK", active: true },
+    { name: "อิออน (AEON)", code: "AEON", active: true },
+  ];
+  const dbFis = [];
+  for (const fi of financialInstitutions) {
+    const dbFi = await prisma.financialInstitution.create({ data: fi });
+    dbFis.push(dbFi);
+  }
+
+  // 3. Addons
   const addonsData = [
-    { name: "พ.ร.บ. จักรยานยนต์", description: "Compulsory motor insurance", price: 323, active: true },
-    { name: "จดทะเบียน/ต่อภาษี", description: "Registration / Tax", price: 500, active: true },
-    { name: "ประกันรถหาย 1 ปี", description: "Lost bike insurance - 1 year", price: 1500, active: true },
-    { name: "หมวกกันน็อคเต็มใบ", description: "Full-face helmet", price: 1200, active: true },
+    { name: "พ.ร.บ. จักรยานยนต์", description: "Compulsory motor insurance", price: 323, active: true, costPrice: 280, stockQty: 100, type: "service" as const },
+    { name: "จดทะเบียน/ต่อภาษี", description: "Registration / Tax", price: 500, active: true, costPrice: 400, stockQty: 100, type: "service" as const },
+    { name: "ประกันรถหาย 1 ปี", description: "Lost bike insurance - 1 year", price: 1500, active: true, costPrice: 1200, stockQty: 100, type: "service" as const },
+    { name: "หมวกกันน็อคเต็มใบ", description: "Full-face helmet", price: 1200, active: true, costPrice: 800, stockQty: 45, type: "accessory" as const },
   ];
 
   const dbAddons = [];
@@ -126,7 +161,7 @@ async function main() {
     dbAddons.push(addon);
   }
 
-  // 3. Customers
+  // 4. Customers
   const dbCustomers = [];
   for (let i = 0; i < 20; i++) {
     const customer = await prisma.customer.create({
@@ -142,7 +177,7 @@ async function main() {
     dbCustomers.push(customer);
   }
 
-  // 4. Delivery Notes & Items (Batches of incoming motorcycles)
+  // 5. Delivery Notes & Items (Batches of incoming motorcycles)
   const deliveryNotes = [];
   for (let i = 0; i < 3; i++) {
     const note = await prisma.deliveryNote.create({
@@ -190,19 +225,15 @@ async function main() {
   const dbMotorcycles = await prisma.motorcycle.findMany();
 
   // 6. Sales, Contracts, SaleAddons, Installments, Payments
-  // Generate test data for all 3 payment methods for TDS-57 testing
   const staffIds = dbUsers.map(u => u.id);
   const customersForSales = faker.helpers.arrayElements(dbCustomers, 12);
   const motorcyclesForSales = faker.helpers.arrayElements(dbMotorcycles, 12);
 
   for (let s = 0; s < 12; s++) {
-    // Divide 12 sales into 3 groups:
-    // Group 1 (s=0-3): Cash Payment
-    // Group 2 (s=4-7): In-house Installment (payment_method = installment)
-    // Group 3 (s=8-11): Finance Company (payment_method = finance_company)
     const paymentGroup = Math.floor(s / 4);
     let paymentMethod: PaymentMethod;
     let financeCompanyName: string | null = null;
+    let financialInstitutionId: string | null = null;
     let downPayment: number;
     let numInstallments: number;
     let interestRate: number;
@@ -210,29 +241,23 @@ async function main() {
     const salePrice = Number(motorcyclesForSales[s].sellingPrice);
 
     if (paymentGroup === 0) {
-      // Cash payment: full amount
       paymentMethod = PaymentMethod.cash;
       downPayment = salePrice;
       numInstallments = 0;
       interestRate = 0;
     } else if (paymentGroup === 1) {
-      // In-house installment: payment_method = installment
       paymentMethod = PaymentMethod.installment;
       downPayment = faker.number.int({ min: 5000, max: 20000 });
       numInstallments = faker.helpers.arrayElement([12, 18, 24, 36]);
       interestRate = faker.number.float({ min: 1.5, max: 2.5, fractionDigits: 2 });
     } else {
-      // Finance company: payment_method = finance_company
       paymentMethod = PaymentMethod.finance_company;
       downPayment = faker.number.int({ min: 5000, max: 20000 });
       numInstallments = faker.helpers.arrayElement([12, 18, 24, 36]);
       interestRate = faker.number.float({ min: 1.5, max: 2.5, fractionDigits: 2 });
-      financeCompanyName = faker.helpers.arrayElement([
-        "กรุงศรีออโต้",
-        "ธนชาติ",
-        "CSY Financing",
-        "ไทยพาณิชย์"
-      ]);
+      const fi = faker.helpers.arrayElement(dbFis);
+      financialInstitutionId = fi.id;
+      financeCompanyName = fi.name;
     }
 
     const customer = customersForSales[s];
@@ -257,6 +282,7 @@ async function main() {
         interestRate,
         paymentMethod,
         financeCompanyName,
+        financialInstitutionId: financialInstitutionId ?? null,
         status: SaleStatus.active,
         soldByUserId: faker.helpers.arrayElement(staffIds),
       }
@@ -273,7 +299,6 @@ async function main() {
       });
     }
 
-    // Only create contract and installments for installment/finance_company sales
     if (paymentMethod !== PaymentMethod.cash) {
       const totalInterest = financeAmount * (interestRate / 100) * numInstallments;
       const totalAmount = financeAmount + totalInterest;
@@ -288,6 +313,7 @@ async function main() {
           numInstallments,
           interestRate,
           startDate: sale.saleDate,
+          financialInstitutionId: financialInstitutionId ?? null,
           status: ContractStatus.active,
           createdByUserId: sale.soldByUserId,
         }

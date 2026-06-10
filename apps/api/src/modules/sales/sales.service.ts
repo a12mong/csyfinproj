@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import type { CreateSaleInput, UpdateSaleInput } from "./sales.schemas.js";
+import { createTaxInvoice } from "../payments/invoices.service.js";
 
 export async function createSale(input: CreateSaleInput, userId: string) {
   const effectiveInvoiceCustomerId = input.invoice_customer_id ?? input.customer_id!;
@@ -34,63 +35,239 @@ export async function createSale(input: CreateSaleInput, userId: string) {
     }
   }
 
-  const financeAmount = input.total_price - input.down_payment;
-
-  // Create the sale — installment details (count, interest) are specified later
-  // when linking this sale to a contract
-  const sale = await prisma.sale.create({
-    data: {
-      customerId: effectiveInvoiceCustomerId,
-      invoiceCustomerId: effectiveInvoiceCustomerId,
-      buyerCustomerId: input.buyer_customer_id ?? null,
-      motorcycleId: input.motorcycle_id,
-      saleDate: new Date(),
-      totalPrice: input.total_price,
-      downPayment: input.down_payment,
-      financeAmount,
-      numInstallments: 0,
-      interestRate: 0,
-      paymentMethod: input.payment_method,
-      financeCompanyName: input.finance_company_name ?? null,
-      financeReferenceNumber: input.finance_reference_number ?? null,
-      financialInstitutionId: input.financial_institution_id ?? null,
-      soldByUserId: userId,
-      notes: input.notes,
-      status: input.payment_method === "cash" ? "completed" : "active",
-    },
-  });
-
-  // Attach add-ons if provided
-  let saleAddons: { id: string; name: string; description: string | null; price: unknown; active: boolean; createdAt: Date }[] = [];
-  if (input.addon_ids && input.addon_ids.length > 0) {
-    const addons = await prisma.addon.findMany({
-      where: { id: { in: input.addon_ids } },
+  const result = await prisma.$transaction(async (tx) => {
+    // Check motorcycle status
+    const motorcycle = await tx.motorcycle.findUnique({
+      where: { id: input.motorcycle_id },
     });
-
-    for (const addon of addons) {
-      await prisma.saleAddon.create({
-        data: {
-          saleId: sale.id,
-          addonId: addon.id,
-          priceAtSale: addon.price,
-        },
-      });
+    if (!motorcycle) {
+      throw Object.assign(new Error("Motorcycle not found"), { statusCode: 404 });
+    }
+    if (motorcycle.status === "sold") {
+      throw Object.assign(new Error("Motorcycle is already sold"), { statusCode: 400 });
     }
 
-    saleAddons = addons;
-  }
+    // Resolve Finance Company customer if payment method is finance_company and name is provided
+    let resolvedInvoiceCustomerId = effectiveInvoiceCustomerId;
+    if (input.payment_method === "finance_company" && invoiceCustomer.type !== "finance" && input.finance_company_name) {
+      let financeCustomer = await tx.customer.findFirst({
+        where: {
+          name: input.finance_company_name,
+          type: "finance",
+        },
+      });
 
-  // Update motorcycle status to sold
-  await prisma.motorcycle.update({
-    where: { id: input.motorcycle_id },
-    data: { status: "sold" },
+      if (!financeCustomer) {
+        financeCustomer = await tx.customer.create({
+          data: {
+            name: input.finance_company_name,
+            type: "finance",
+            phone: "—",
+            address: "—",
+            idCardNumber: "—",
+          },
+        });
+      }
+      resolvedInvoiceCustomerId = financeCustomer.id;
+    }
+
+    // Attach add-ons if provided, and check/decrement stock
+    let saleAddons: { addon: any; billingOption: string }[] = [];
+    const addonDetailsMap = new Map<string, { billingOption: string }>();
+    if (input.addons && input.addons.length > 0) {
+      for (const item of input.addons) {
+        addonDetailsMap.set(item.id, { billingOption: item.billing_option });
+      }
+    } else if (input.addon_ids && input.addon_ids.length > 0) {
+      for (const id of input.addon_ids) {
+        addonDetailsMap.set(id, { billingOption: "pay_separately" });
+      }
+    }
+
+    const allAddonIds = Array.from(addonDetailsMap.keys());
+    if (allAddonIds.length > 0) {
+      const addons = await tx.addon.findMany({
+        where: { id: { in: allAddonIds } },
+      });
+
+      const foundAddonIds = addons.map((a) => a.id);
+      const missingAddonIds = allAddonIds.filter((id) => !foundAddonIds.includes(id));
+      if (missingAddonIds.length > 0) {
+        throw Object.assign(
+          new Error(`Some addons were not found: ${missingAddonIds.join(", ")}`),
+          { statusCode: 404 }
+        );
+      }
+
+      for (const addon of addons) {
+        if (addon.type === "part" || addon.type === "accessory") {
+          if (addon.stockQty < 1) {
+            throw Object.assign(
+              new Error(`Addon "${addon.name}" is out of stock`),
+              { statusCode: 400 }
+            );
+          }
+          await tx.addon.update({
+            where: { id: addon.id },
+            data: { stockQty: { decrement: 1 } },
+          });
+        }
+        const details = addonDetailsMap.get(addon.id)!;
+        saleAddons.push({ addon, billingOption: details.billingOption });
+      }
+    }
+
+    // Calculate finance amount (including addons with 'included_in_finance' billing option)
+    const baseFinanceAmount = input.total_price - input.down_payment;
+    const addonsFinanceAmount = saleAddons
+      .filter((sa) => sa.billingOption === "included_in_finance")
+      .reduce((sum, sa) => sum + Number(sa.addon.price), 0);
+    const totalFinanceAmount = baseFinanceAmount + addonsFinanceAmount;
+
+    // Create the sale
+    const sale = await tx.sale.create({
+      data: {
+        customerId: input.buyer_customer_id ?? effectiveInvoiceCustomerId,
+        invoiceCustomerId: resolvedInvoiceCustomerId,
+        buyerCustomerId: input.buyer_customer_id ?? effectiveInvoiceCustomerId,
+        motorcycleId: input.motorcycle_id,
+        saleDate: new Date(),
+        totalPrice: input.total_price,
+        downPayment: input.down_payment,
+        financeAmount: totalFinanceAmount,
+        numInstallments: 0,
+        interestRate: 0,
+        paymentMethod: input.payment_method,
+        financeCompanyName: input.finance_company_name ?? null,
+        financeReferenceNumber: input.finance_reference_number ?? null,
+        commissionAmount: input.commission_amount ?? null,
+        financialInstitutionId: input.financial_institution_id ?? null,
+        soldByUserId: userId,
+        notes: input.notes,
+        status: input.payment_method === "cash" ? "completed" : "active",
+      },
+    });
+
+    // Handle payment creation and tax invoice generation based on payment method
+    if (input.payment_method === "cash") {
+      const payment = await tx.payment.create({
+        data: {
+          saleId: sale.id,
+          amount: input.total_price,
+          paymentDate: new Date(),
+          paymentChannel: "cash",
+          verified: true,
+          verifiedByUserId: userId,
+          notes: "Cash payment for motorcycle sale",
+        },
+      });
+
+      await createTaxInvoice(tx, {
+        saleId: sale.id,
+        paymentId: payment.id,
+        customerId: input.buyer_customer_id ?? effectiveInvoiceCustomerId,
+        type: "motorcycle",
+        totalAmount: input.total_price,
+      });
+    } else if (input.payment_method === "installment") {
+      if (input.down_payment > 0) {
+        await tx.payment.create({
+          data: {
+            saleId: sale.id,
+            amount: input.down_payment,
+            paymentDate: new Date(),
+            paymentChannel: "cash",
+            verified: false,
+            notes: "Pending down payment for installment sale",
+          },
+        });
+      }
+    } else if (input.payment_method === "finance_company") {
+      if (input.down_payment > 0) {
+        await tx.payment.create({
+          data: {
+            saleId: sale.id,
+            amount: input.down_payment,
+            paymentDate: new Date(),
+            paymentChannel: "cash",
+            verified: false,
+            notes: "Pending down payment from customer",
+          },
+        });
+      }
+
+      if (totalFinanceAmount > 0) {
+        await tx.payment.create({
+          data: {
+            saleId: sale.id,
+            amount: totalFinanceAmount,
+            paymentDate: new Date(),
+            paymentChannel: "bank_transfer",
+            verified: false,
+            notes: `Pending payout from finance company (includes addons): ${input.finance_company_name ?? ""}`,
+          },
+        });
+      }
+
+      if (input.commission_amount && input.commission_amount > 0) {
+        await tx.payment.create({
+          data: {
+            saleId: sale.id,
+            amount: input.commission_amount,
+            paymentDate: new Date(),
+            paymentChannel: "bank_transfer",
+            verified: false,
+            notes: "Pending commission payout from finance company",
+          },
+        });
+      }
+    }
+
+    // Create addon payments for addons paid separately
+    for (const sa of saleAddons) {
+      if (sa.billingOption === "pay_separately") {
+        await tx.payment.create({
+          data: {
+            saleId: sale.id,
+            addonId: sa.addon.id,
+            amount: sa.addon.price,
+            paymentDate: new Date(),
+            paymentChannel: "cash",
+            verified: false,
+            notes: `Pending payment for add-on: ${sa.addon.name}`,
+          },
+        });
+      }
+    }
+
+    // Link sale with addons
+    if (saleAddons.length > 0) {
+      for (const sa of saleAddons) {
+        await tx.saleAddon.create({
+          data: {
+            saleId: sale.id,
+            addonId: sa.addon.id,
+            priceAtSale: sa.billingOption === "free_gift" ? 0 : sa.addon.price,
+            billingOption: sa.billingOption,
+          },
+        });
+      }
+    }
+
+    // Update motorcycle status to sold
+    await tx.motorcycle.update({
+      where: { id: input.motorcycle_id },
+      data: { status: "sold" },
+    });
+
+    return { sale, addons: saleAddons.map((sa) => sa.addon) };
   });
 
   return {
     data: {
-      ...sale,
+      ...result.sale,
       installments: [],
-      addons: saleAddons,
+      addons: result.addons,
     },
   };
 }
@@ -147,8 +324,31 @@ export async function getSaleDetail(id: string) {
       invoiceCustomer: { select: { id: true, name: true, phone: true, type: true } },
       buyerCustomer: { select: { id: true, name: true, phone: true, type: true } },
       motorcycle: true,
-      installments: { orderBy: { installmentNumber: "asc" } },
+      installments: {
+        orderBy: { installmentNumber: "asc" },
+        include: {
+          payments: {
+            include: { taxInvoices: true },
+          },
+        },
+      },
       saleAddons: { include: { addon: true } },
+      contractSales: {
+        include: {
+          contract: {
+            include: {
+              installments: {
+                orderBy: { installmentNumber: "asc" },
+                include: {
+                  payments: {
+                    include: { taxInvoices: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -156,10 +356,51 @@ export async function getSaleDetail(id: string) {
     throw Object.assign(new Error("Sale not found"), { statusCode: 404 });
   }
 
+  // Resolve installments: if direct installments exist, use them.
+  // Otherwise, check linked contracts and use their installments.
+  let resolvedInstallments = sale.installments;
+  let linkedContract = null;
+  if (sale.contractSales && sale.contractSales.length > 0) {
+    const firstContractSale = sale.contractSales[0];
+    if (firstContractSale.contract) {
+      linkedContract = firstContractSale.contract;
+      if (resolvedInstallments.length === 0 && linkedContract.installments) {
+        resolvedInstallments = linkedContract.installments as any;
+      }
+    }
+  }
+
+  // Fetch all tax invoices for this sale
+  // Includes sale-level invoices AND all payment-level invoices for this sale/contract installments
+  const paymentIds = resolvedInstallments.flatMap((inst) => 
+    inst.payments ? inst.payments.map((p) => p.id) : []
+  );
+
+  const taxInvoices = await prisma.taxInvoice.findMany({
+    where: {
+      OR: [
+        { saleId: id },
+        ...(paymentIds.length > 0 ? [{ paymentId: { in: paymentIds } }] : []),
+      ],
+    },
+    orderBy: { issuedAt: "asc" },
+  });
+
   return {
     data: {
       ...sale,
-      addons: sale.saleAddons.map((sa) => sa.addon),
+      installments: resolvedInstallments,
+      linkedContract: linkedContract ? {
+        id: linkedContract.id,
+        contractNumber: linkedContract.contractNumber,
+        status: linkedContract.status,
+      } : null,
+      addons: sale.saleAddons.map((sa) => ({
+        ...sa.addon,
+        priceAtSale: Number(sa.priceAtSale),
+        billingOption: sa.billingOption,
+      })),
+      taxInvoices,
     },
   };
 }

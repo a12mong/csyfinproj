@@ -134,6 +134,34 @@ export async function createDeliveryNote(
         }
         createdItems.push({ ...noteItem, motorcycles });
       } else {
+        if (itemInput.item_type === "part" || itemInput.item_type === "accessory") {
+          const existingAddon = await tx.addon.findFirst({
+            where: {
+              name: itemInput.description,
+              type: itemInput.item_type,
+            },
+          });
+
+          if (existingAddon) {
+            await tx.addon.update({
+              where: { id: existingAddon.id },
+              data: {
+                stockQty: { increment: itemInput.quantity },
+                costPrice: itemInput.unit_cost,
+              },
+            });
+          } else {
+            await tx.addon.create({
+              data: {
+                name: itemInput.description,
+                type: itemInput.item_type,
+                costPrice: itemInput.unit_cost,
+                price: itemInput.unit_cost * 1.25,
+                stockQty: itemInput.quantity,
+              },
+            });
+          }
+        }
         createdItems.push({ ...noteItem, motorcycles: [] });
       }
     }

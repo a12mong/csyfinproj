@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
 import { confirm, toastSuccess, alertError } from "@/lib/swal";
@@ -16,12 +17,14 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
 type ReferenceType = "installment" | "contract" | "sale";
+type VerifiedFilter = "all" | "pending" | "verified";
 
 function formatPrice(n: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
     currency: "THB",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(n);
 }
 
@@ -44,6 +47,11 @@ interface PaymentWithInstallment extends Payment {
   installment?: Installment & {
     sale?: { customer?: { name: string } };
   };
+  taxInvoices?: Array<{
+    id: string;
+    invoiceNumber: string;
+    type: string;
+  }>;
 }
 
 function PaymentsContent() {
@@ -51,9 +59,7 @@ function PaymentsContent() {
   const preselectedInstallmentId = searchParams.get("installmentId") ?? "";
 
   // --- Reference type ---
-  const [refType, setRefType] = useState<ReferenceType>(
-    preselectedInstallmentId ? "installment" : "installment"
-  );
+  const [refType, setRefType] = useState<ReferenceType>("installment");
 
   // --- Record Payment Form ---
   const [installmentId, setInstallmentId] = useState(preselectedInstallmentId);
@@ -86,10 +92,9 @@ function PaymentsContent() {
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [paymentChannel, setPaymentChannel] = useState<"cash" | "bank_transfer" | "line">("cash");
 
-  // --- Unverified Payments ---
-  const [unverifiedPayments, setUnverifiedPayments] = useState<
-    PaymentWithInstallment[]
-  >([]);
+  // --- Payments Ledger ---
+  const [payments, setPayments] = useState<PaymentWithInstallment[]>([]);
+  const [filterVerified, setFilterVerified] = useState<VerifiedFilter>("pending");
   const [verifyLoading, setVerifyLoading] = useState(true);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
@@ -102,19 +107,23 @@ function PaymentsContent() {
       );
       setInstallments(res.data);
     } catch {
-      // Non-fatal — form still usable if user knows their installment ID
+      // Non-fatal dropdown error
     }
   }, []);
 
-  // Load unverified payments
-  const fetchUnverified = useCallback(async () => {
+  // Load payments based on filter
+  const fetchPayments = useCallback(async (statusFilter: VerifiedFilter) => {
     setVerifyLoading(true);
     setVerifyError(null);
     try {
+      const params = new URLSearchParams();
+      if (statusFilter === "pending") params.set("verified", "false");
+      if (statusFilter === "verified") params.set("verified", "true");
+      
       const res = await apiFetch<PaginatedResponse<PaymentWithInstallment>>(
-        `/payments?verified=false`
+        `/payments?${params.toString()}`
       );
-      setUnverifiedPayments(res.data);
+      setPayments(res.data);
     } catch (err) {
       setVerifyError(
         err instanceof Error ? err.message : "Failed to load payments"
@@ -126,8 +135,8 @@ function PaymentsContent() {
 
   useEffect(() => {
     fetchInstallments();
-    fetchUnverified();
-  }, [fetchInstallments, fetchUnverified]);
+    fetchPayments(filterVerified);
+  }, [fetchInstallments, fetchPayments, filterVerified]);
 
   // Search for a contract by number
   async function handleContractSearch() {
@@ -142,13 +151,11 @@ function PaymentsContent() {
       const contract = res.data[0] ?? null;
       setFoundContract(contract);
       if (contract) {
-        // Load open installments for this contract
         const instRes = await apiFetch<PaginatedResponse<Installment>>(
           `/installments?contract_id=${contract.id}&status=pending`
         );
         const openInsts = instRes.data;
         setContractInstallments(openInsts);
-        // Pre-select the oldest unpaid
         setContractInstallmentId(openInsts[0]?.id ?? "");
       }
     } catch (err) {
@@ -167,7 +174,6 @@ function PaymentsContent() {
     setSaleContractInstallments([]);
     setSaleInstallmentId("");
     try {
-      // Find contracts linked to this sale ID
       const res = await apiFetch<PaginatedResponse<Contract>>(`/contracts?sale_id=${encodeURIComponent(q)}`);
       const contract = res.data[0] ?? null;
       setSaleContract(contract);
@@ -245,12 +251,10 @@ function PaymentsContent() {
         return;
       }
       formData.append("contract_id", foundContract.id);
-      // Optionally include selected installment to target a specific one
       if (contractInstallmentId) {
         formData.append("installment_id", contractInstallmentId);
       }
     } else {
-      // sale
       if (!saleContract) {
         setSubmitError("Please search and select a sale/PO first.");
         return;
@@ -282,7 +286,7 @@ function PaymentsContent() {
       toastSuccess("Payment recorded successfully");
       setSubmitSuccess("Payment recorded successfully.");
       resetForm();
-      fetchUnverified();
+      fetchPayments(filterVerified);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to record payment";
       alertError(msg);
@@ -296,7 +300,7 @@ function PaymentsContent() {
     const confirmed = await confirm({
       title: verified ? "Approve Payment?" : "Reject Payment?",
       text: verified
-        ? "This will mark the payment as verified."
+        ? "This will mark the payment as verified and auto-generate tax invoice(s)."
         : "This will reject the payment slip.",
       confirmText: verified ? "Yes, approve" : "Yes, reject",
       icon: verified ? "question" : "warning",
@@ -309,8 +313,8 @@ function PaymentsContent() {
         method: "PATCH",
         body: JSON.stringify({ verified }),
       });
-      toastSuccess(verified ? "Payment approved" : "Payment rejected");
-      fetchUnverified();
+      toastSuccess(verified ? "Payment approved and invoiced" : "Payment rejected");
+      fetchPayments(filterVerified);
     } catch (err) {
       const msg = err instanceof Error ? err.message : `Failed to ${verified ? "approve" : "reject"} payment`;
       alertError(msg);
@@ -326,18 +330,18 @@ function PaymentsContent() {
     <div className="px-8 py-8 space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Payments</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Repayment Ledger &amp; Verification</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Record payments and verify slip uploads
+          Record customer payments, verify bank slips, and issue legal tax invoices.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {/* ── Record Payment ── */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm self-start">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
             <h2 className="text-base font-semibold text-gray-900">
-              Record Payment
+              Record Repayment
             </h2>
           </div>
 
@@ -345,7 +349,7 @@ function PaymentsContent() {
             {/* Reference Type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reference Type <span className="text-red-500">*</span>
+                Reference Mode <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
                 {(["installment", "contract", "sale"] as ReferenceType[]).map((t) => (
@@ -472,10 +476,6 @@ function PaymentsContent() {
                     </select>
                   </div>
                 )}
-
-                {foundContract && contractInstallments.length === 0 && !contractSearchLoading && (
-                  <p className="text-xs text-gray-500">No open installments for this contract.</p>
-                )}
               </div>
             )}
 
@@ -504,16 +504,11 @@ function PaymentsContent() {
                       {saleSearchLoading ? "…" : "Resolve"}
                     </button>
                   </div>
-                  <p className="mt-1 text-xs text-gray-400">
-                    Resolves to the linked contract and its open installments.
-                  </p>
                 </div>
 
                 {saleContract && (
                   <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                    Contract:{" "}
-                    <span className="font-semibold">{saleContract.contractNumber}</span>
-                    {" · "}Total: {formatPrice(saleContract.totalAmount)}
+                    Contract: <span className="font-semibold">{saleContract.contractNumber}</span>
                   </div>
                 )}
 
@@ -531,15 +526,10 @@ function PaymentsContent() {
                         <option key={inst.id} value={inst.id}>
                           #{inst.installmentNumber} — Due {formatDate(inst.dueDate)} —{" "}
                           {formatPrice(inst.amountDue - inst.amountPaid)} remaining
-                          {inst.status === "overdue" ? " ⚠ overdue" : ""}
                         </option>
                       ))}
                     </select>
                   </div>
-                )}
-
-                {saleContract && saleContractInstallments.length === 0 && !saleSearchLoading && (
-                  <p className="text-xs text-gray-500">No open installments found via this sale.</p>
                 )}
               </div>
             )}
@@ -576,7 +566,7 @@ function PaymentsContent() {
             {/* Payment Channel */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Channel
+                Payment Channel
               </label>
               <select
                 value={paymentChannel}
@@ -585,7 +575,7 @@ function PaymentsContent() {
               >
                 <option value="cash">Cash</option>
                 <option value="bank_transfer">Bank Transfer</option>
-                <option value="line">LINE</option>
+                <option value="line">LINE Chat Slip</option>
               </select>
             </div>
 
@@ -617,11 +607,11 @@ function PaymentsContent() {
             {/* Notes */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes (optional)
+                Notes
               </label>
               <textarea
                 rows={2}
-                placeholder="Any additional notes…"
+                placeholder="Internal verification notes…"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
@@ -642,25 +632,46 @@ function PaymentsContent() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-2.5 px-4 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              className="w-full py-2.5 px-4 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm"
             >
-              {submitting ? "Recording…" : "Record Payment"}
+              {submitting ? "Recording…" : "Record Repayment"}
             </button>
           </form>
         </div>
 
-        {/* ── Unverified Payments ── */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-900">
-              Pending Verification
-            </h2>
-            <button
-              onClick={fetchUnverified}
-              className="text-xs text-primary-600 hover:text-primary-700 font-medium"
-            >
-              Refresh
-            </button>
+        {/* ── Transaction Ledger & Verification ── */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm flex flex-col">
+          {/* Header & Filter Tabs */}
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900">
+                Repayment Ledger
+              </h2>
+              <button
+                onClick={() => fetchPayments(filterVerified)}
+                className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+              >
+                Refresh
+              </button>
+            </div>
+            
+            {/* Tabs */}
+            <div className="flex gap-1.5 bg-gray-100 p-1 rounded-lg">
+              {(["all", "pending", "verified"] as VerifiedFilter[]).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setFilterVerified(tab)}
+                  className={`flex-1 py-1 text-xs font-semibold rounded-md transition-colors capitalize ${
+                    filterVerified === tab
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  {tab === "all" ? "All Receipts" : tab === "pending" ? "Pending Slip" : "Verified"}
+                </button>
+              ))}
+            </div>
           </div>
 
           {verifyError && (
@@ -669,7 +680,8 @@ function PaymentsContent() {
             </div>
           )}
 
-          <div className="divide-y divide-gray-100">
+          {/* List */}
+          <div className="divide-y divide-gray-100 overflow-y-auto max-h-[680px] flex-1">
             {verifyLoading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="px-5 py-4">
@@ -677,69 +689,112 @@ function PaymentsContent() {
                   <div className="h-3 bg-gray-50 rounded animate-pulse w-2/3" />
                 </div>
               ))
-            ) : unverifiedPayments.length === 0 ? (
-              <div className="px-5 py-10 text-center text-sm text-gray-400">
-                No payments pending verification.
+            ) : payments.length === 0 ? (
+              <div className="px-5 py-12 text-center text-sm text-gray-400">
+                No payments found matching this filter.
               </div>
             ) : (
-              unverifiedPayments.map((payment) => {
-                // Resolve customer name from installment or contract
+              payments.map((payment) => {
                 const customerName =
                   payment.installment?.sale?.customer?.name ??
                   payment.contract?.customer?.name;
 
                 return (
-                  <div key={payment.id} className="px-5 py-4">
+                  <div key={payment.id} className={`px-5 py-4 hover:bg-gray-50/50 transition-colors ${!payment.verified ? "bg-amber-50/10" : ""}`}>
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {formatPrice(payment.amount)}
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-gray-950 font-mono">
+                            {formatPrice(payment.amount)}
+                          </p>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              payment.verified
+                                ? "bg-green-50 text-green-700 border border-green-200"
+                                : "bg-amber-50 text-amber-700 border border-amber-200 animate-pulse"
+                            }`}
+                          >
+                            {payment.verified ? "Verified" : "Pending Approval"}
+                          </span>
+                        </div>
+                        
+                        <p className="text-xs text-gray-500">
+                          Date: <strong>{formatDate(payment.paymentDate)}</strong> &middot; Channel: <span className="capitalize">{payment.paymentChannel.replace("_", " ")}</span>
                         </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {formatDate(payment.paymentDate)}
-                          {customerName && (
-                            <span className="ml-1.5 text-gray-400">
-                              &middot; {customerName}
-                            </span>
-                          )}
-                        </p>
-                        {payment.contract?.contractNumber && (
-                          <p className="text-xs text-blue-600 mt-0.5">
-                            Contract: {payment.contract.contractNumber}
+                        {customerName && (
+                          <p className="text-xs text-gray-600">
+                            Payer: <strong>{customerName}</strong>
                           </p>
                         )}
+                        {payment.contract?.contractNumber && (
+                          <p className="text-xs text-blue-600 font-mono">
+                            Contract: <Link href={`/contracts/${payment.contractId}`} className="hover:underline font-semibold">{payment.contract.contractNumber}</Link>
+                          </p>
+                        )}
+                        {payment.notes && (
+                          <p className="text-xs text-gray-400 italic">Notes: {payment.notes}</p>
+                        )}
+
                         {payment.slipImageUrl && (
-                          <a
-                            href={payment.slipImageUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block mt-2"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={payment.slipImageUrl}
-                              alt="Slip"
-                              className="h-20 rounded border border-gray-200 object-contain hover:opacity-80 transition-opacity"
-                            />
-                          </a>
+                          <div className="mt-2">
+                            <a
+                              href={payment.slipImageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-block hover:opacity-80 transition-opacity"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={payment.slipImageUrl}
+                                alt="Slip"
+                                className="h-16 rounded border border-gray-200 object-contain"
+                              />
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Tax Invoices Print Section */}
+                        {payment.verified && payment.taxInvoices && payment.taxInvoices.length > 0 && (
+                          <div className="mt-3 pt-2 border-t border-dashed border-gray-100 space-y-1">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Generated Tax Invoices:</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {payment.taxInvoices.map((inv) => (
+                                <div key={inv.id} className="inline-flex items-center gap-2 bg-gray-50 border border-gray-200 rounded px-2.5 py-0.5 text-xs">
+                                  <span className="font-mono text-gray-600 text-[11px]">📄 {inv.invoiceNumber} ({inv.type})</span>
+                                  <button
+                                    onClick={() => {
+                                      window.open(`${API_BASE_URL}/payments/invoices/${inv.id}/print`, "_blank");
+                                    }}
+                                    className="text-primary-600 hover:text-primary-700 font-bold border-l border-gray-300 pl-2 text-[10px]"
+                                  >
+                                    Print
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => handleVerify(payment.id, true)}
-                          disabled={verifyingId === payment.id}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors border border-green-200"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleVerify(payment.id, false)}
-                          disabled={verifyingId === payment.id}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors border border-red-200"
-                        >
-                          Reject
-                        </button>
-                      </div>
+
+                      {/* Verify controls for pending payments */}
+                      {!payment.verified && (
+                        <div className="flex gap-2 shrink-0 self-start">
+                          <button
+                            onClick={() => handleVerify(payment.id, true)}
+                            disabled={verifyingId === payment.id}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-md bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors border border-green-200 shadow-sm"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => handleVerify(payment.id, false)}
+                            disabled={verifyingId === payment.id}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-md bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors border border-red-200 shadow-sm"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

@@ -216,3 +216,115 @@ export async function sendGreetingMessage(input: SendGreetingInput) {
 
   return { success: true, message: "Greeting message sent successfully" };
 }
+
+export async function sendPaymentConfirmation(paymentId: string) {
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: {
+      contract: { include: { customer: true } },
+      installment: { include: { sale: { include: { customer: true } } } },
+      sale: { include: { customer: true } },
+    },
+  });
+
+  if (!payment) return;
+
+  const customer = payment.contract?.customer || payment.installment?.sale?.customer || payment.sale?.customer;
+  if (!customer) return;
+
+  const refNumber = payment.contract?.contractNumber || payment.installment?.sale?.id?.slice(0, 8) || payment.sale?.id?.slice(0, 8);
+  const amountStr = Number(payment.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 });
+
+  const message =
+    `ใบเสร็จรับเงิน/ใบกำกับภาษี: เรียนคุณ ${customer.name} ` +
+    `เราได้รับชำระเงินสำหรับรายการ ${refNumber} จำนวนเงิน ${amountStr} บาท เรียบร้อยแล้ว ` +
+    `ขอบคุณที่ชำระเงินและใช้บริการกับเราครับ 🏍️`;
+
+  const channels = resolveChannels("line", customer); // Default LINE or SMS
+
+  for (const { channel, address } of channels) {
+    let success = false;
+    try {
+      if (channel === "line") {
+        success = await sendViaLine(address, message);
+      } else if (channel === "sms") {
+        success = await sendViaSms(address, message);
+      } else {
+        success = await sendViaEmail(address, message);
+      }
+    } catch {
+      success = false;
+    }
+
+    await prisma.notificationLog.create({
+      data: {
+        customerId: customer.id,
+        channel,
+        message,
+        status: success ? "sent" : "failed",
+        sentAt: success ? new Date() : null,
+      },
+    });
+  }
+}
+
+export async function sendInstallmentReminder(installmentId: string, preferredChannel?: "line" | "sms" | "email") {
+  const installment = await prisma.installment.findUnique({
+    where: { id: installmentId },
+    include: {
+      contract: { include: { customer: true } },
+      sale: { include: { customer: true } },
+    },
+  });
+
+  if (!installment) {
+    throw Object.assign(new Error("Installment not found"), { statusCode: 404 });
+  }
+
+  const customer = installment.contract?.customer || installment.sale?.customer;
+  if (!customer) {
+    throw Object.assign(new Error("Customer not found for this installment"), { statusCode: 404 });
+  }
+
+  const refNumber = installment.contract?.contractNumber || installment.sale?.id?.slice(0, 8);
+  const remaining = Number(installment.amountDue) - Number(installment.amountPaid);
+  const remainingStr = remaining.toLocaleString("th-TH", { minimumFractionDigits: 2 });
+
+  const message =
+    `แจ้งเตือนยอดชำระ: เรียนคุณ ${customer.name} มียอดค้างชำระสำหรับสัญญา/รายการ ` +
+    `เลขที่ ${refNumber} งวดที่ ${installment.installmentNumber} จำนวนเงิน ` +
+    `${remainingStr} บาท ครบกำหนดวันที่ ${installment.dueDate.toISOString().slice(0, 10)}`;
+
+  const channels = resolveChannels(preferredChannel, customer);
+  let sentCount = 0;
+
+  for (const { channel, address } of channels) {
+    let success = false;
+    try {
+      if (channel === "line") {
+        success = await sendViaLine(address, message);
+      } else if (channel === "sms") {
+        success = await sendViaSms(address, message);
+      } else {
+        success = await sendViaEmail(address, message);
+      }
+    } catch {
+      success = false;
+    }
+
+    await prisma.notificationLog.create({
+      data: {
+        customerId: customer.id,
+        installmentId: installment.id,
+        channel,
+        message,
+        status: success ? "sent" : "failed",
+        sentAt: success ? new Date() : null,
+      },
+    });
+
+    if (success) sentCount++;
+  }
+
+  return { success: sentCount > 0, message: `Sent ${sentCount} reminders.` };
+}
