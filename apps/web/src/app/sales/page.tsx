@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
 import FormModal from "@/components/FormModal";
 import { apiFetch } from "@/lib/api";
-import { toastSuccess, alertError } from "@/lib/swal";
+import { confirm, toastSuccess, alertError } from "@/lib/swal";
 import type {
   Customer,
   Motorcycle,
@@ -1140,9 +1140,27 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     setStep((s) => s + 1);
   }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e?: FormEvent) {
+    e?.preventDefault();
+    // Only the explicit confirm button on the final step may create the sale
+    if (step !== 5 || submitting) return;
     if (!customer || !motorcycle) return;
+
+    const methodLabel =
+      pricing.payment_method === "cash"
+        ? "เงินสด (Cash)"
+        : pricing.payment_method === "installment"
+        ? "ผ่อนกับร้าน (Installment)"
+        : "ไฟแนนซ์ (Finance Company)";
+    const confirmed = await confirm({
+      title: "ยืนยันการสร้างรายการขาย?",
+      text: `${customer.name} · ${motorcycle.brand} ${motorcycle.model} · ${methodLabel} · ยอดรวม ${formatPrice(parseFloat(pricing.total_price) || 0)}`,
+      confirmText: "ยืนยัน สร้างรายการขาย",
+      cancelText: "ยกเลิก",
+      icon: "question",
+    });
+    if (!confirmed) return;
+
     setSubmitting(true);
     setSubmitError(null);
 
@@ -1281,7 +1299,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
   }
 
   return (
-    <form onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
+    <form onSubmit={(e) => e.preventDefault()} onKeyDown={handleKeyDown}>
       <StepIndicator current={step} />
 
       {step === 1 && <StepCustomer selected={customer} onSelect={setCustomer} />}
@@ -1351,6 +1369,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
 
         {step < 5 ? (
           <button
+            key="continue"
             type="button"
             onClick={handleNext}
             disabled={!canAdvance}
@@ -1360,7 +1379,9 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
           </button>
         ) : (
           <button
-            type="submit"
+            key="confirm"
+            type="button"
+            onClick={() => handleSubmit()}
             disabled={submitting}
             className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
