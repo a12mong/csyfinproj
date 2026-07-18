@@ -43,17 +43,15 @@ function computeEmiTotals(
   const r = annualRate / 12 / 100;
   const factor = Math.pow(1 + r, numInstallments);
   const emi = round2((principal * r * factor) / (factor - 1));
-  // Sum of all EMIs minus principal = total interest
-  // Last installment may differ, so compute as total − principal
-  let totalInterest = round2(emi * (numInstallments - 1));
+  // Accumulate the interest portion of each installment, mirroring
+  // generateInstallmentSchedule so header totals always match the schedule
+  let totalInterest = 0;
   let remaining = principal;
   for (let i = 1; i <= numInstallments; i++) {
     const interest = round2(remaining * r);
     const principalPart = i === numInstallments ? round2(remaining) : round2(emi - interest);
+    totalInterest = round2(totalInterest + interest);
     remaining = round2(remaining - principalPart);
-    if (i === numInstallments) {
-      totalInterest = round2(totalInterest + interest);
-    }
   }
   return { totalInterest, totalAmount: round2(principal + totalInterest) };
 }
@@ -355,6 +353,24 @@ export async function listContracts(query: ListContractsQuery) {
       include: {
         customer: true,
         createdBy: { select: { id: true, name: true } },
+        contractSales: {
+          select: {
+            sale: {
+              select: {
+                id: true,
+                motorcycle: {
+                  select: {
+                    id: true,
+                    brand: true,
+                    model: true,
+                    color: true,
+                    chassisNumber: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         _count: { select: { installments: true, payments: true } },
       },
       orderBy: { createdAt: "desc" },

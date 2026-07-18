@@ -39,6 +39,13 @@ export async function listInstallments(options: {
         sale: {
           include: { customer: true },
         },
+        contract: {
+          select: {
+            id: true,
+            contractNumber: true,
+            customer: { select: { id: true, name: true, phone: true } },
+          },
+        },
       },
       orderBy: { dueDate: "asc" },
     }),

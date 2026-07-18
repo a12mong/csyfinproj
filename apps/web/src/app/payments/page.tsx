@@ -11,12 +11,34 @@ import type {
   Payment,
   PaginatedResponse,
   Contract,
+  Customer,
 } from "@csyfinproj/shared";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
-type ReferenceType = "installment" | "contract" | "sale";
+type ReferenceType = "customer" | "installment" | "contract" | "sale";
+
+interface MotorcycleLite {
+  id: string;
+  brand: string;
+  model: string;
+  color: string;
+  chassisNumber: string;
+}
+
+interface ContractWithBike extends Contract {
+  contractSales?: Array<{ sale: { id: string; motorcycle?: MotorcycleLite } }>;
+  _count?: { installments: number; payments: number };
+}
+
+interface InstallmentWithRefs extends Installment {
+  sale?: { customer?: { name: string } };
+  contract?: {
+    contractNumber: string;
+    customer?: { name: string; phone?: string };
+  };
+}
 type VerifiedFilter = "all" | "pending" | "verified";
 
 function formatPrice(n: number) {
@@ -58,12 +80,26 @@ function PaymentsContent() {
   const searchParams = useSearchParams();
   const preselectedInstallmentId = searchParams.get("installmentId") ?? "";
 
-  // --- Reference type ---
-  const [refType, setRefType] = useState<ReferenceType>("installment");
+  // --- Reference type (customer-first; deep links with ?installmentId= keep installment mode) ---
+  const [refType, setRefType] = useState<ReferenceType>(
+    preselectedInstallmentId ? "installment" : "customer"
+  );
 
   // --- Record Payment Form ---
   const [installmentId, setInstallmentId] = useState(preselectedInstallmentId);
-  const [installments, setInstallments] = useState<Installment[]>([]);
+  const [installments, setInstallments] = useState<InstallmentWithRefs[]>([]);
+
+  // Customer reference state (walk-in flow)
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<Customer[]>([]);
+  const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customerContracts, setCustomerContracts] = useState<ContractWithBike[]>([]);
+  const [customerContractsLoading, setCustomerContractsLoading] = useState(false);
+  const [custContractId, setCustContractId] = useState("");
+  const [custInstallments, setCustInstallments] = useState<Installment[]>([]);
+  const [custInstallmentsLoading, setCustInstallmentsLoading] = useState(false);
+  const [custInstallmentId, setCustInstallmentId] = useState("");
 
   // Contract reference state
   const [contractSearch, setContractSearch] = useState("");
@@ -137,6 +173,94 @@ function PaymentsContent() {
     fetchInstallments();
     fetchPayments(filterVerified);
   }, [fetchInstallments, fetchPayments, filterVerified]);
+
+  // Debounced customer search (walk-in flow)
+  useEffect(() => {
+    if (refType !== "customer" || selectedCustomer) return;
+    const q = customerSearch.trim();
+    if (q.length < 2) {
+      setCustomerResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setCustomerSearchLoading(true);
+      try {
+        const res = await apiFetch<PaginatedResponse<Customer>>(
+          `/customers?search=${encodeURIComponent(q)}&limit=8`
+        );
+        setCustomerResults(res.data);
+      } catch {
+        setCustomerResults([]);
+      } finally {
+        setCustomerSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [customerSearch, refType, selectedCustomer]);
+
+  function bikeLabel(contract: ContractWithBike): string | null {
+    const bike = contract.contractSales?.find((cs) => cs.sale?.motorcycle)?.sale
+      ?.motorcycle;
+    if (!bike) return null;
+    return `${bike.brand} ${bike.model} (${bike.color}) · คัสซี ${bike.chassisNumber}`;
+  }
+
+  async function loadContractInstallments(contractId: string) {
+    setCustInstallmentsLoading(true);
+    setCustInstallments([]);
+    setCustInstallmentId("");
+    try {
+      const res = await apiFetch<PaginatedResponse<Installment>>(
+        `/installments?contract_id=${contractId}&status=pending&limit=100`
+      );
+      setCustInstallments(res.data);
+      const oldest = res.data[0];
+      if (oldest) {
+        setCustInstallmentId(oldest.id);
+        setAmount(String(oldest.amountDue - oldest.amountPaid));
+      }
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : "Failed to load installments");
+    } finally {
+      setCustInstallmentsLoading(false);
+    }
+  }
+
+  async function handleSelectCustomer(customer: Customer) {
+    setSelectedCustomer(customer);
+    setCustomerResults([]);
+    setCustomerContracts([]);
+    setCustContractId("");
+    setCustInstallments([]);
+    setCustInstallmentId("");
+    setCustomerContractsLoading(true);
+    try {
+      const res = await apiFetch<PaginatedResponse<ContractWithBike>>(
+        `/contracts?customer_id=${customer.id}&status=active&limit=50`
+      );
+      setCustomerContracts(res.data);
+      if (res.data.length === 1) {
+        const only = res.data[0]!;
+        setCustContractId(only.id);
+        await loadContractInstallments(only.id);
+      }
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : "Failed to load contracts");
+    } finally {
+      setCustomerContractsLoading(false);
+    }
+  }
+
+  function handleClearCustomer() {
+    setSelectedCustomer(null);
+    setCustomerSearch("");
+    setCustomerResults([]);
+    setCustomerContracts([]);
+    setCustContractId("");
+    setCustInstallments([]);
+    setCustInstallmentId("");
+    setAmount("");
+  }
 
   // Search for a contract by number
   async function handleContractSearch() {
@@ -212,7 +336,9 @@ function PaymentsContent() {
     setSlipPreview(null);
     setPaymentChannel("cash");
     if (fileInputRef.current) fileInputRef.current.value = "";
-    if (refType === "installment") {
+    if (refType === "customer") {
+      handleClearCustomer();
+    } else if (refType === "installment") {
       fetchInstallments();
     } else if (refType === "contract") {
       setFoundContract(null);
@@ -239,7 +365,16 @@ function PaymentsContent() {
     if (notes) formData.append("notes", notes);
     if (slipFile) formData.append("slip_image", slipFile);
 
-    if (refType === "installment") {
+    if (refType === "customer") {
+      if (!selectedCustomer || !custContractId) {
+        setSubmitError("กรุณาค้นหาลูกค้าและเลือกสัญญาก่อน (Select a customer and contract first.)");
+        return;
+      }
+      formData.append("contract_id", custContractId);
+      if (custInstallmentId) {
+        formData.append("installment_id", custInstallmentId);
+      }
+    } else if (refType === "installment") {
       if (!installmentId) {
         setSubmitError("Please select an installment.");
         return;
@@ -352,22 +487,183 @@ function PaymentsContent() {
                 Reference Mode <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
-                {(["installment", "contract", "sale"] as ReferenceType[]).map((t) => (
+                {(["customer", "installment", "contract", "sale"] as ReferenceType[]).map((t) => (
                   <button
                     key={t}
                     type="button"
                     onClick={() => { setRefType(t); setSubmitError(null); }}
-                    className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium border transition-colors ${
+                    className={`flex-1 py-1.5 px-2 rounded-md text-sm font-medium border transition-colors ${
                       refType === t
                         ? "bg-primary-600 text-white border-primary-600"
                         : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                     }`}
                   >
-                    {t === "installment" ? "Installment" : t === "contract" ? "Contract" : "Sale / PO"}
+                    {t === "customer"
+                      ? "ลูกค้า"
+                      : t === "installment"
+                      ? "Installment"
+                      : t === "contract"
+                      ? "Contract"
+                      : "Sale / PO"}
                   </button>
                 ))}
               </div>
             </div>
+
+            {/* ── Customer reference (walk-in flow) ── */}
+            {refType === "customer" && (
+              <div className="space-y-3">
+                {!selectedCustomer ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      ค้นหาลูกค้า <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="พิมพ์ชื่อ เบอร์โทร หรือเลขบัตรประชาชน…"
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      autoFocus
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    />
+                    {customerSearchLoading && (
+                      <p className="mt-1.5 text-xs text-gray-400">กำลังค้นหา…</p>
+                    )}
+                    {!customerSearchLoading &&
+                      customerSearch.trim().length >= 2 &&
+                      customerResults.length === 0 && (
+                        <p className="mt-1.5 text-xs text-gray-400">
+                          ไม่พบลูกค้า — ลองค้นด้วยเบอร์โทรหรือเลขบัตรประชาชน
+                        </p>
+                      )}
+                    {customerResults.length > 0 && (
+                      <ul className="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden">
+                        {customerResults.map((c) => (
+                          <li key={c.id}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectCustomer(c)}
+                              className="w-full px-3 py-2 text-left hover:bg-primary-50 transition-colors"
+                            >
+                              <span className="block text-sm font-medium text-gray-900">
+                                {c.name}
+                              </span>
+                              <span className="block text-xs text-gray-500">
+                                📞 {c.phone}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {/* Selected customer card */}
+                    <div className="flex items-start justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
+                      <div>
+                        <p className="text-sm font-semibold text-primary-900">
+                          {selectedCustomer.name}
+                        </p>
+                        <p className="text-xs text-primary-700">📞 {selectedCustomer.phone}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearCustomer}
+                        className="text-xs font-medium text-primary-600 hover:text-primary-800 underline"
+                      >
+                        เปลี่ยนลูกค้า
+                      </button>
+                    </div>
+
+                    {/* Contract picker */}
+                    {customerContractsLoading ? (
+                      <p className="text-xs text-gray-400">กำลังโหลดสัญญา…</p>
+                    ) : customerContracts.length === 0 ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        ลูกค้ารายนี้ไม่มีสัญญาที่กำลังผ่อนอยู่ (no active contracts)
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          สัญญา / รถ ที่มาชำระ <span className="text-red-500">*</span>
+                        </label>
+                        <div className="space-y-2">
+                          {customerContracts.map((contract) => {
+                            const bike = bikeLabel(contract);
+                            const active = custContractId === contract.id;
+                            return (
+                              <button
+                                key={contract.id}
+                                type="button"
+                                onClick={() => {
+                                  setCustContractId(contract.id);
+                                  loadContractInstallments(contract.id);
+                                }}
+                                className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                                  active
+                                    ? "border-primary-500 bg-primary-50 ring-1 ring-primary-500"
+                                    : "border-gray-200 bg-white hover:border-gray-400"
+                                }`}
+                              >
+                                <span className="block text-sm font-semibold text-gray-900 font-mono">
+                                  {contract.contractNumber}
+                                </span>
+                                {bike && (
+                                  <span className="block text-xs text-gray-600">🏍 {bike}</span>
+                                )}
+                                <span className="block text-xs text-gray-500">
+                                  ยอดสัญญา {formatPrice(contract.totalAmount)} ·{" "}
+                                  {contract.numInstallments} งวด
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Installment picker */}
+                    {custContractId &&
+                      (custInstallmentsLoading ? (
+                        <p className="text-xs text-gray-400">กำลังโหลดงวด…</p>
+                      ) : custInstallments.length === 0 ? (
+                        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                          สัญญานี้ไม่มีงวดค้างชำระแล้ว 🎉
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            งวดที่ชำระ (เลือกงวดค้างเก่าสุดให้อัตโนมัติ)
+                          </label>
+                          <select
+                            value={custInstallmentId}
+                            onChange={(e) => {
+                              setCustInstallmentId(e.target.value);
+                              const inst = custInstallments.find(
+                                (i) => i.id === e.target.value
+                              );
+                              if (inst) {
+                                setAmount(String(inst.amountDue - inst.amountPaid));
+                              }
+                            }}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+                          >
+                            {custInstallments.map((inst) => (
+                              <option key={inst.id} value={inst.id}>
+                                งวดที่ {inst.installmentNumber} — ครบกำหนด{" "}
+                                {formatDate(inst.dueDate)} — ค้าง{" "}
+                                {formatPrice(inst.amountDue - inst.amountPaid)}
+                                {new Date(inst.dueDate) < new Date() ? " ⚠ เกินกำหนด" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                  </>
+                )}
+              </div>
+            )}
 
             {/* ── Installment reference ── */}
             {refType === "installment" && (
@@ -382,14 +678,20 @@ function PaymentsContent() {
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
                   >
                     <option value="">Select installment…</option>
-                    {installments.map((inst) => (
-                      <option key={inst.id} value={inst.id}>
-                        #{inst.installmentNumber} — Due{" "}
-                        {formatDate(inst.dueDate)} —{" "}
-                        {formatPrice(inst.amountDue - inst.amountPaid)} remaining
-                        {inst.status === "overdue" ? " ⚠ overdue" : ""}
-                      </option>
-                    ))}
+                    {installments.map((inst) => {
+                      const payerName =
+                        inst.contract?.customer?.name ?? inst.sale?.customer?.name;
+                      const contractNo = inst.contract?.contractNumber;
+                      return (
+                        <option key={inst.id} value={inst.id}>
+                          {payerName ? `${payerName} — ` : ""}
+                          {contractNo ? `${contractNo} — ` : ""}
+                          #{inst.installmentNumber} — Due {formatDate(inst.dueDate)} —{" "}
+                          {formatPrice(inst.amountDue - inst.amountPaid)} remaining
+                          {inst.status === "overdue" ? " ⚠ overdue" : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                 ) : (
                   <input
@@ -617,6 +919,38 @@ function PaymentsContent() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
               />
             </div>
+
+            {/* Confirmation summary (customer mode) */}
+            {refType === "customer" && selectedCustomer && custContractId && custInstallmentId && (
+              (() => {
+                const contract = customerContracts.find((c) => c.id === custContractId);
+                const inst = custInstallments.find((i) => i.id === custInstallmentId);
+                const bike = contract ? bikeLabel(contract) : null;
+                return (
+                  <div className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2.5 text-sm text-primary-900 space-y-0.5">
+                    <p className="font-semibold">สรุปการรับชำระ</p>
+                    <p>
+                      ลูกค้า: <strong>{selectedCustomer.name}</strong>
+                      {contract && (
+                        <>
+                          {" "}· สัญญา <strong className="font-mono">{contract.contractNumber}</strong>
+                        </>
+                      )}
+                    </p>
+                    {bike && <p>รถ: {bike}</p>}
+                    {inst && (
+                      <p>
+                        งวดที่ <strong>{inst.installmentNumber}</strong> · ค้างชำระ{" "}
+                        <strong>{formatPrice(inst.amountDue - inst.amountPaid)}</strong> · รับชำระ{" "}
+                        <strong className="text-primary-700">
+                          {amount ? formatPrice(Number(amount)) : "—"}
+                        </strong>
+                      </p>
+                    )}
+                  </div>
+                );
+              })()
+            )}
 
             {submitError && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
