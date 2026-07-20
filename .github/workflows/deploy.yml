@@ -82,6 +82,8 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
+          # GitHub runner → droplet dials can be flaky; default 30s is too tight
+          timeout: 120s
           source: "deploy/docker-compose.yml,deploy/Caddyfile"
           target: /opt/csyfinproj
           strip_components: 1
@@ -94,6 +96,8 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 15m
           script: |
             set -euo pipefail
             cd /opt/csyfinproj
