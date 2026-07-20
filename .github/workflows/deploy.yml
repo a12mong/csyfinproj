@@ -1,20 +1,28 @@
 name: Build & Deploy
 
+# Branch → environment mapping:
+#   develop → GitHub Environment "dev"        (dev droplet)
+#   main    → GitHub Environment "production" (live droplet)
+# Each Environment carries its own secrets (DEPLOY_HOST/DEPLOY_USER/
+# DEPLOY_SSH_KEY/GHCR_PAT) and variables (NEXT_PUBLIC_API_URL/NEXT_PUBLIC_LIFF_ID).
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
-# Never run two deploys at once; queue instead of cancelling (a half-finished
-# deploy is worse than a late one).
+# Never run two deploys at once per environment; queue instead of cancelling
+# (a half-finished deploy is worse than a late one).
 concurrency:
-  group: deploy-production
+  group: deploy-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   build:
     name: Build ${{ matrix.app }} image
     runs-on: ubuntu-latest
+    # Environment is needed here too: NEXT_PUBLIC_* vars are environment-scoped
+    # and get baked into the web image at build time.
+    environment: ${{ github.ref_name == 'main' && 'production' || 'dev' }}
     permissions:
       contents: read
       packages: write
@@ -38,10 +46,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/csyfinproj-${{ matrix.app }}
+          # Every build gets the unique commit-sha tag (used by deploy);
+          # the moving tag is "latest" for main and "dev" for develop.
           tags: |
-            type=raw,value=latest
+            type=raw,value=${{ github.ref_name == 'main' && 'latest' || 'dev' }}
             type=sha,format=long,prefix=
-
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -59,10 +68,10 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.app }},mode=max
 
   deploy:
-    name: Deploy to droplet
+    name: Deploy (${{ github.ref_name == 'main' && 'live' || 'dev' }})
     needs: build
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ github.ref_name == 'main' && 'production' || 'dev' }}
     steps:
       - uses: actions/checkout@v4
 
