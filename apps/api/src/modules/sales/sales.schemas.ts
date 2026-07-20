@@ -7,6 +7,7 @@ export const createSaleSchema = z
     buyer_customer_id: z.string().uuid().optional(),
     motorcycle_id: z.string().uuid(),
     total_price: z.number().positive(),
+    discount_amount: z.number().nonnegative().optional().default(0),
     down_payment: z.number().nonnegative(),
     payment_method: z.enum(["cash", "installment", "finance_company"]),
     finance_company_name: z.string().min(1).optional(),

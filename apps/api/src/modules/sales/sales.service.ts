@@ -117,8 +117,18 @@ export async function createSale(input: CreateSaleInput, userId: string) {
       }
     }
 
+    // Net price after discount — discount is applied before down payment / financing
+    const discount = input.discount_amount ?? 0;
+    if (discount >= input.total_price) {
+      throw Object.assign(new Error("ส่วนลดต้องน้อยกว่าราคาสินค้า"), { statusCode: 400 });
+    }
+    const netPrice = input.total_price - discount;
+    if (input.down_payment > netPrice) {
+      throw Object.assign(new Error("เงินดาวน์ต้องไม่เกินราคาหลังหักส่วนลด"), { statusCode: 400 });
+    }
+
     // Calculate finance amount (including addons with 'included_in_finance' billing option)
-    const baseFinanceAmount = input.total_price - input.down_payment;
+    const baseFinanceAmount = netPrice - input.down_payment;
     const addonsFinanceAmount = saleAddons
       .filter((sa) => sa.billingOption === "included_in_finance")
       .reduce((sum, sa) => sum + Number(sa.addon.price), 0);
@@ -133,6 +143,7 @@ export async function createSale(input: CreateSaleInput, userId: string) {
         motorcycleId: input.motorcycle_id,
         saleDate: new Date(),
         totalPrice: input.total_price,
+        discountAmount: discount,
         downPayment: input.down_payment,
         financeAmount: totalFinanceAmount,
         numInstallments: 0,
@@ -153,7 +164,7 @@ export async function createSale(input: CreateSaleInput, userId: string) {
       const payment = await tx.payment.create({
         data: {
           saleId: sale.id,
-          amount: input.total_price,
+          amount: netPrice,
           paymentDate: new Date(),
           paymentChannel: "cash",
           verified: true,
@@ -167,7 +178,7 @@ export async function createSale(input: CreateSaleInput, userId: string) {
         paymentId: payment.id,
         customerId: input.buyer_customer_id ?? effectiveInvoiceCustomerId,
         type: "motorcycle",
-        totalAmount: input.total_price,
+        totalAmount: netPrice,
       });
     } else if (input.payment_method === "installment") {
       if (input.down_payment > 0) {

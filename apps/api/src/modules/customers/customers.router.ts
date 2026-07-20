@@ -4,27 +4,14 @@ import { createCustomer, listCustomers, getCustomerDetail, updateCustomer, linkC
 import { requireAuth, requirePermission, requireRole, resolveUserPermissions } from "../../middleware/auth.js";
 import { getSetting } from "../settings/settings.service.js";
 import { maskIdCard } from "../../lib/audit.js";
+import { prisma } from "../../lib/prisma.js";
+import { uploadCustomerDocs, SECURE_UPLOAD_DIR } from "../../lib/upload.js";
+import sharp from "sharp";
+import path from "path";
+import fs from "fs";
 import { anonymizeCustomer } from "./customers.service.js";
 import type { Request } from "express";
 
-/**
- * PDPA: mask the national ID card number in customer payloads unless the
- * requesting user has the customers.view_pii permission.
- */
-async function maskCustomerPii<T>(req: Request, payload: T): Promise<T> {
-  if (!req.user) return payload;
-  const perms = await resolveUserPermissions(req.user.sub, req.user.role);
-  if (perms["customers.view_pii"]) return payload;
-
-  const maskOne = (c: Record<string, unknown>) => {
-    if (typeof c["idCardNumber"] === "string") c["idCardNumber"] = maskIdCard(c["idCardNumber"] as string);
-    if (typeof c["id_card_number"] === "string") c["id_card_number"] = maskIdCard(c["id_card_number"] as string);
-    return c;
-  };
-  if (Array.isArray(payload)) return (payload as unknown[]).map((c) => maskOne(c as Record<string, unknown>)) as T;
-  if (payload && typeof payload === "object") return maskOne(payload as Record<string, unknown>) as T;
-  return payload;
-}
 
 export const customersRouter: IRouter = Router();
 
@@ -116,7 +103,6 @@ customersRouter.get("/", requireAuth, requirePermission("customers", "view"), as
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
 
     const result = await listCustomers({ search, type, page, limit });
-    result.data = await maskCustomerPii(req, result.data);
     res.json(result);
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };
@@ -128,13 +114,121 @@ customersRouter.get("/", requireAuth, requirePermission("customers", "view"), as
 customersRouter.get("/:id", requireAuth, requirePermission("customers", "view"), async (req, res) => {
   try {
     const result = await getCustomerDetail(req.params["id"] as string);
-    result.data = await maskCustomerPii(req, result.data);
     res.json(result);
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };
     res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
   }
 });
+
+// ─── Identity documents (รูปบัตรประชาชน / รูปคู่บัตร) — PDPA protected ──────────
+
+const DOC_FIELDS = {
+  id_card: "idCardImagePath",
+  selfie: "idCardSelfiePath",
+} as const;
+
+/** Pre-render a heavily blurred copy at upload time for non-PII viewers. */
+async function createBlurredCopy(filename: string): Promise<void> {
+  const src = path.join(SECURE_UPLOAD_DIR, filename);
+  const dest = path.join(SECURE_UPLOAD_DIR, `blur-${filename}.jpg`);
+  await sharp(src).resize(600).blur(18).jpeg({ quality: 60 }).toFile(dest);
+}
+
+// POST /api/v1/customers/:id/documents — upload id card / selfie images
+customersRouter.post(
+  "/:id/documents",
+  requireAuth,
+  requirePermission("customers", "edit"),
+  uploadCustomerDocs.fields([
+    { name: "id_card_image", maxCount: 1 },
+    { name: "id_card_selfie", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+      const idCard = files?.["id_card_image"]?.[0];
+      const selfie = files?.["id_card_selfie"]?.[0];
+      if (!idCard && !selfie) {
+        res.status(400).json({ error: "กรุณาแนบรูปอย่างน้อย 1 รูป" });
+        return;
+      }
+
+      const data: Record<string, string> = {};
+      if (idCard) {
+        await createBlurredCopy(idCard.filename);
+        data["idCardImagePath"] = idCard.filename;
+      }
+      if (selfie) {
+        await createBlurredCopy(selfie.filename);
+        data["idCardSelfiePath"] = selfie.filename;
+      }
+
+      await prisma.customer.update({ where: { id: req.params["id"] as string }, data });
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string };
+      res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
+    }
+  }
+);
+
+// GET /api/v1/customers/:id/documents/:type — stream image; blurred without view_pii
+customersRouter.get(
+  "/:id/documents/:type",
+  requireAuth,
+  requirePermission("customers", "view"),
+  async (req, res) => {
+    try {
+      const type = req.params["type"] as string;
+      const field = DOC_FIELDS[type as keyof typeof DOC_FIELDS];
+      if (!field) {
+        res.status(404).json({ error: "ไม่รู้จักประเภทเอกสาร" });
+        return;
+      }
+      const customer = await prisma.customer.findUnique({
+        where: { id: req.params["id"] as string },
+        select: { idCardImagePath: true, idCardSelfiePath: true, name: true },
+      });
+      const filename = customer?.[field];
+      if (!customer || !filename) {
+        res.status(404).json({ error: "ไม่พบรูปเอกสาร" });
+        return;
+      }
+
+      const perms = await resolveUserPermissions(req.user!.sub, req.user!.role);
+      const canViewPii = !!perms["customers.view_pii"];
+      const fileToServe = canViewPii ? filename : `blur-${filename}.jpg`;
+      const filePath = path.join(SECURE_UPLOAD_DIR, path.basename(fileToServe));
+      if (!fs.existsSync(filePath)) {
+        res.status(404).json({ error: "ไม่พบไฟล์รูป" });
+        return;
+      }
+
+      // PDPA: viewing the full (unblurred) document is itself audited
+      if (canViewPii) {
+        prisma.auditLog
+          .create({
+            data: {
+              userId: req.user!.sub,
+              userName: req.user!.email,
+              action: "view",
+              entity: "customers",
+              entityId: req.params["id"] as string,
+              summary: `ดูรูปเอกสารยืนยันตัวตน (${type}) ของลูกค้า "${customer.name}" แบบไม่เบลอ`,
+            },
+          })
+          .catch(() => {});
+      }
+
+      res.setHeader("Cache-Control", "private, max-age=60");
+      res.sendFile(path.resolve(filePath));
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message?: string };
+      res.status(e.statusCode ?? 500).json({ error: e.message ?? "Internal server error" });
+    }
+  }
+);
 
 // POST /api/v1/customers/:id/anonymize — PDPA right to erasure (admin only)
 // Blocked while the customer has activity within the configured lock period.

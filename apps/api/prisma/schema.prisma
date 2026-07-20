@@ -158,6 +158,8 @@ model Customer {
   lineLinkCode String?      @unique @map("line_link_code") @db.VarChar(16)
   lineLinkCodeExpiresAt DateTime? @map("line_link_code_expires_at")
   consentAcceptedAt DateTime? @map("consent_accepted_at")
+  idCardImagePath  String?  @map("id_card_image_path") @db.VarChar(255)
+  idCardSelfiePath String?  @map("id_card_selfie_path") @db.VarChar(255)
   anonymizedAt DateTime?    @map("anonymized_at")
   address      String?      @db.Text
   idCardNumber String       @unique @map("id_card_number") @db.VarChar(13)
@@ -206,6 +208,7 @@ model Sale {
   motorcycleId    String        @map("motorcycle_id") @db.VarChar(36)
   saleDate        DateTime      @map("sale_date") @db.Date
   totalPrice      Decimal       @map("total_price") @db.Decimal(12, 2)
+  discountAmount  Decimal       @default(0) @map("discount_amount") @db.Decimal(12, 2)
   downPayment     Decimal       @map("down_payment") @db.Decimal(12, 2)
   financeAmount   Decimal       @map("finance_amount") @db.Decimal(12, 2)
   numInstallments Int           @map("num_installments")

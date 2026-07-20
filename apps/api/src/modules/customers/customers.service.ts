@@ -1,4 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
+import { SECURE_UPLOAD_DIR } from "../../lib/upload.js";
+import path from "path";
+import fs from "fs";
 import type { CreateCustomerInput, UpdateCustomerInput } from "./customers.schemas.js";
 
 export async function createCustomer(input: CreateCustomerInput) {
@@ -286,9 +289,25 @@ export async function anonymizeCustomer(id: string, lockYears: number) {
       lineLinkCodeExpiresAt: null,
       // idCardNumber is unique+required — replace with a non-identifying placeholder
       idCardNumber: `ANON${Date.now().toString().slice(-9)}`,
+      idCardImagePath: null,
+      idCardSelfiePath: null,
       anonymizedAt: new Date(),
     },
   });
+
+  // Erase identity document files (originals + blurred copies)
+  for (const f of [customer.idCardImagePath, customer.idCardSelfiePath]) {
+    if (!f) continue;
+    for (const name of [f, `blur-${f}.jpg`]) {
+      const fp = path.join(SECURE_UPLOAD_DIR, path.basename(name));
+      try {
+        if (fs.existsSync(fp)) fs.unlinkSync(fp);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  }
+
   return { data: updated };
 }
 

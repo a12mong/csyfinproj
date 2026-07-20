@@ -37,3 +37,37 @@ export const uploadSlip = multer({
     }
   },
 });
+
+// ─── Customer identity documents (PDPA-protected) ─────────────────────────────
+// Stored OUTSIDE the public /uploads static root so originals are never
+// reachable without going through the permission-checked endpoint.
+
+export const SECURE_UPLOAD_DIR = process.env.SECURE_UPLOAD_DIR ?? "./secure-uploads";
+
+if (!fs.existsSync(SECURE_UPLOAD_DIR)) {
+  fs.mkdirSync(SECURE_UPLOAD_DIR, { recursive: true });
+}
+
+const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
+
+const secureStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, SECURE_UPLOAD_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+  },
+});
+
+export const uploadCustomerDocs = multer({
+  storage: secureStorage,
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8MB
+  fileFilter: (_req, file, cb) => {
+    if (IMAGE_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("รองรับเฉพาะไฟล์ JPG และ PNG"));
+    }
+  },
+});

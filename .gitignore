@@ -10,3 +10,9 @@ dist/
 coverage/
 prisma/*.db
 prisma/*.db-journal
+
+# Uploaded files (payment slips, PDPA-protected identity documents)
+apps/api/uploads/
+apps/api/secure-uploads/
+secure-uploads/
+uploads/

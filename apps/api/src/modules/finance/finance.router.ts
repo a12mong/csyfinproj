@@ -326,9 +326,19 @@ financeRouter.get("/upcoming-due", requirePermission("finance", "view"), async (
           today_amount: sum("today"),
           upcoming_count: items.filter((i) => i.bucket === "upcoming").length,
           upcoming_amount: sum("upcoming"),
-          partial_count: items.filter((i) => i.status === "partially_paid").length,
+          // Carried balance: partially paid AND already due (today or past) — needs follow-up.
+          // Advance payment: partially paid but the due date is still ahead — normal.
+          partial_count: items.filter(
+            (i) => i.status === "partially_paid" && i.bucket !== "upcoming"
+          ).length,
           partial_amount: items
-            .filter((i) => i.status === "partially_paid")
+            .filter((i) => i.status === "partially_paid" && i.bucket !== "upcoming")
+            .reduce((s, i) => s + i.remaining, 0),
+          advance_count: items.filter(
+            (i) => i.status === "partially_paid" && i.bucket === "upcoming"
+          ).length,
+          advance_amount: items
+            .filter((i) => i.status === "partially_paid" && i.bucket === "upcoming")
             .reduce((s, i) => s + i.remaining, 0),
         },
       },
