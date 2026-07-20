@@ -10,6 +10,7 @@ export const createCustomerSchema = z.object({
   line_id: z.string().optional(),
   address: z.string().optional(),
   type: customerTypeSchema.optional(),
+  consent_accepted: z.boolean().optional(),
 });
 
 export const updateCustomerSchema = z.object({

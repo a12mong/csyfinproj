@@ -297,6 +297,7 @@ export async function sendInstallmentReminder(installmentId: string, preferredCh
 
   const channels = resolveChannels(preferredChannel, customer);
   let sentCount = 0;
+  const sentChannels: Array<"line" | "sms" | "email"> = [];
 
   for (const { channel, address } of channels) {
     let success = false;
@@ -323,8 +324,16 @@ export async function sendInstallmentReminder(installmentId: string, preferredCh
       },
     });
 
-    if (success) sentCount++;
+    if (success) {
+      sentCount++;
+      sentChannels.push(channel);
+    }
   }
 
-  return { success: sentCount > 0, message: `Sent ${sentCount} reminders.` };
+  return {
+    success: sentCount > 0,
+    message: `Sent ${sentCount} reminders.`,
+    channels: sentChannels,
+    attemptedChannels: channels.map((c) => c.channel),
+  };
 }

@@ -24,14 +24,18 @@ function toUserDto(user: {
   name: string;
   role: string;
   active: boolean;
+  roleId?: string | null;
+  assignedRole?: { id: string; name: string } | null;
   createdAt: Date;
   updatedAt: Date;
-}): UserDto {
+}): UserDto & { roleId?: string | null; roleName?: string | null } {
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     role: user.role as UserDto["role"],
+    roleId: user.roleId ?? null,
+    roleName: user.assignedRole?.name ?? null,
     active: user.active,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -64,6 +68,7 @@ export async function listUsers(query: ListUsersQuery) {
       skip,
       take: query.limit,
       orderBy: { createdAt: "desc" },
+      include: { assignedRole: { select: { id: true, name: true } } },
     }),
     prisma.user.count({ where }),
   ]);
@@ -84,6 +89,18 @@ export async function getUserById(id: string) {
   return { data: toUserDto(user) };
 }
 
+/**
+ * Resolve a Role row and the legacy enum value it maps to.
+ * The enum stays in sync so requireRole("admin") keeps working.
+ */
+async function resolveRoleAssignment(roleId: string) {
+  const role = await prisma.role.findUnique({ where: { id: roleId } });
+  if (!role) {
+    throw Object.assign(new Error("ไม่พบ role ที่เลือก"), { statusCode: 404 });
+  }
+  return { roleId: role.id, enumRole: role.isSystem ? ("admin" as const) : ("staff" as const) };
+}
+
 export async function createUser(input: CreateUserInput) {
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
   if (existing) {
@@ -92,13 +109,17 @@ export async function createUser(input: CreateUserInput) {
 
   const passwordHash = await bcrypt.hash(input.password, 12);
 
+  const assignment = input.role_id ? await resolveRoleAssignment(input.role_id) : null;
+
   const user = await prisma.user.create({
     data: {
       email: input.email,
       passwordHash,
       name: input.name,
-      role: input.role,
+      role: assignment ? assignment.enumRole : input.role,
+      ...(assignment && { roleId: assignment.roleId }),
     },
+    include: { assignedRole: { select: { id: true, name: true } } },
   });
 
   await createDefaultPermissions(user.id, user.role);
@@ -129,13 +150,32 @@ export async function updateUser(
     }
   }
 
+  const assignment =
+    input.role_id != null ? await resolveRoleAssignment(input.role_id) : null;
+
+  // Prevent removing the last admin via role-tree reassignment
+  if (assignment && assignment.enumRole !== "admin" && user.role === "admin") {
+    const adminCount = await prisma.user.count({
+      where: { role: "admin", active: true },
+    });
+    if (adminCount <= 1) {
+      throw Object.assign(
+        new Error("Cannot change role: this is the last active admin"),
+        { statusCode: 422 }
+      );
+    }
+  }
+
   const updated = await prisma.user.update({
     where: { id },
     data: {
       ...(input.name !== undefined && { name: input.name }),
       ...(input.email !== undefined && { email: input.email }),
-      ...(input.role !== undefined && { role: input.role }),
+      ...(input.role !== undefined && !assignment && { role: input.role }),
+      ...(assignment && { roleId: assignment.roleId, role: assignment.enumRole }),
+      ...(input.role_id === null && { roleId: null }),
     },
+    include: { assignedRole: { select: { id: true, name: true } } },
   });
 
   return { data: toUserDto(updated) };

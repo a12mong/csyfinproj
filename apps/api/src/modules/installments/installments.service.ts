@@ -5,6 +5,7 @@ export async function listInstallments(options: {
   contract_id?: string;
   status?: string;
   overdue?: boolean;
+  open?: boolean;
   page?: number;
   limit?: number;
 }) {
@@ -26,6 +27,9 @@ export async function listInstallments(options: {
     // Filter for installments past their due date that have not been fully paid
     where.dueDate = { lt: new Date() };
     where.status = { notIn: ["paid"] };
+  } else if (options.open) {
+    // Any installment still carrying a balance (incl. partially paid)
+    where.status = { in: ["pending", "partially_paid", "overdue"] };
   } else if (options.status) {
     where.status = options.status;
   }

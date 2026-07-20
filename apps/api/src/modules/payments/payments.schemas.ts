@@ -38,6 +38,7 @@ export const listPaymentsQuerySchema = z.object({
       if (v === "false") return false;
       return undefined;
     }),
+  date: z.string().date().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });

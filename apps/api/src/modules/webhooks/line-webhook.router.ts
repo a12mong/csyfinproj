@@ -3,6 +3,8 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { createLinePayment } from "../payments/payments.service.js";
+import { linkCustomerByCode } from "../customers/customers.service.js";
+import { auditSystem } from "../../lib/audit.js";
 
 export const lineWebhookRouter: IRouter = Router();
 
@@ -68,11 +70,93 @@ async function downloadLineImage(messageId: string): Promise<string | undefined>
   }
 }
 
+/**
+ * Reply to a LINE message using the reply token (free, no push quota).
+ */
+async function replyLineMessage(replyToken: string, text: string): Promise<void> {
+  if (!LINE_CHANNEL_ACCESS_TOKEN) return;
+  try {
+    await fetch("https://api.line.me/v2/bot/message/reply", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+      body: JSON.stringify({ replyToken, messages: [{ type: "text", text }] }),
+    });
+  } catch (err) {
+    console.error("[LINE Webhook] Failed to reply:", err);
+  }
+}
+
+/**
+ * Fetch a LINE user's profile picture URL via the Messaging API.
+ */
+async function fetchLineProfilePicture(lineUserId: string): Promise<string | undefined> {
+  if (!LINE_CHANNEL_ACCESS_TOKEN) return undefined;
+  try {
+    const res = await fetch(`https://api.line.me/v2/bot/profile/${lineUserId}`, {
+      headers: { Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}` },
+    });
+    if (!res.ok) return undefined;
+    const profile = (await res.json()) as { pictureUrl?: string };
+    return profile.pictureUrl;
+  } catch {
+    return undefined;
+  }
+}
+
+// Matches "LINK A1B2C3" / "link a1b2c3" / bare "A1B2C3" (6 chars, unambiguous alphabet)
+const LINK_MESSAGE_RE = /^(?:LINK[\s:-]*)?([A-HJ-NP-Z2-9]{6})$/i;
+
+/**
+ * Handle a text message: if it carries a link code, bind the sender's LINE
+ * account to the matching customer record and reply with the result.
+ */
+async function handleLinkTextMessage(
+  text: string,
+  lineUserId: string,
+  replyToken: string | undefined
+): Promise<boolean> {
+  const match = text.trim().match(LINK_MESSAGE_RE);
+  if (!match) return false;
+
+  const code = match[1]!.toUpperCase();
+  const pictureUrl = await fetchLineProfilePicture(lineUserId);
+  const customer = await linkCustomerByCode(code, lineUserId, pictureUrl);
+
+  if (customer) {
+    console.log(`[LINE Webhook] Linked LINE user ${lineUserId} to customer ${customer.id}`);
+    auditSystem({
+      action: "link",
+      entity: "customers",
+      entityId: customer.id,
+      summary: `ลูกค้า "${customer.name}" เชื่อมบัญชี LINE ผ่านรหัสในแชท OA`,
+    });
+    if (replyToken) {
+      await replyLineMessage(
+        replyToken,
+        `เชื่อมต่อบัญชี LINE สำเร็จ! ✅\nคุณ ${customer.name} จะได้รับการแจ้งเตือนค่างวดและใบเสร็จผ่าน LINE นี้ และสามารถส่งสลิปโอนเงินเข้ามาในแชทนี้ได้เลยครับ 🏍️`
+      );
+    }
+  } else {
+    console.warn(`[LINE Webhook] Link code ${code} not found or expired (user ${lineUserId})`);
+    if (replyToken) {
+      await replyLineMessage(
+        replyToken,
+        `รหัสเชื่อมต่อไม่ถูกต้องหรือหมดอายุแล้ว ⚠️\nกรุณาติดต่อเจ้าหน้าที่เพื่อขอรหัสใหม่ หรือสแกน QR Code จากหน้าจอเจ้าหน้าที่อีกครั้งครับ`
+      );
+    }
+  }
+  return true;
+}
+
 // LINE Webhook types (minimal)
 interface LineMessageEvent {
   type: "message";
   source: { type: string; userId?: string; groupId?: string; roomId?: string };
-  message: { type: string; id: string };
+  message: { type: string; id: string; text?: string };
+  replyToken?: string;
   timestamp: number;
 }
 
@@ -135,12 +219,19 @@ lineWebhookRouter.post(
     }
 
     for (const event of payload.events) {
-      // Only process image messages from users
       if (event.type !== "message") continue;
-      if (event.message.type !== "image") continue;
 
       const lineUserId = event.source?.userId;
       if (!lineUserId) continue;
+
+      // Text messages: account-link codes ("LINK A1B2C3")
+      if (event.message.type === "text" && event.message.text) {
+        await handleLinkTextMessage(event.message.text, lineUserId, event.replyToken);
+        continue;
+      }
+
+      // Image messages: payment slips
+      if (event.message.type !== "image") continue;
 
       const messageId = event.message.id;
 

@@ -17,7 +17,12 @@ import { usersRouter } from "./modules/users/users.router.js";
 import { permissionsRouter } from "./modules/permissions/permissions.router.js";
 import { contractsRouter } from "./modules/contracts/contracts.router.js";
 import { financialInstitutionsRouter } from "./modules/financial-institutions/financial-institutions.router.js";
+import { settingsRouter } from "./modules/settings/settings.router.js";
+import { rolesRouter } from "./modules/roles/roles.router.js";
+import { auditRouter } from "./modules/audit/audit.router.js";
+import { auditTap, startAuditRetentionJob } from "./lib/audit.js";
 import { financeRouter } from "./modules/finance/finance.router.js";
+import { dashboardRouter } from "./modules/dashboard/dashboard.router.js";
 
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
@@ -54,6 +59,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 // API v1 routes
+app.use("/api/v1", auditTap);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/motorcycles", motorcyclesRouter);
 app.use("/api/v1/customers", customersRouter);
@@ -67,7 +73,13 @@ app.use("/api/v1/users", usersRouter);
 app.use("/api/v1", permissionsRouter);
 app.use("/api/v1/contracts", contractsRouter);
 app.use("/api/v1/financial-institutions", financialInstitutionsRouter);
+app.use("/api/v1/settings", settingsRouter);
+app.use("/api/v1/roles", rolesRouter);
+app.use("/api/v1/audit-logs", auditRouter);
 app.use("/api/v1/finance", financeRouter);
+app.use("/api/v1/dashboard", dashboardRouter);
+
+startAuditRetentionJob();
 
 app.listen(PORT, () => {
   console.log(`API server running on http://localhost:${PORT}`);

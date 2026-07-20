@@ -19,6 +19,7 @@ enum PermissionPage {
   receiving
   sales
   customers
+  contracts
   finance
   payments
   settings
@@ -115,12 +116,15 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   active        Boolean  @default(true)
+  roleId        String?  @map("role_id") @db.VarChar(36)
 
   sales             Sale[]
   verifiedPayments  Payment[] @relation("VerifiedBy")
   deliveryNotes     DeliveryNote[]
   permissions       UserPermission[]
   createdContracts  Contract[] @relation("CreatedContracts")
+  notificationBatches NotificationBatch[] @relation("BatchCreatedBy")
+  assignedRole      Role? @relation(fields: [roleId], references: [id])
 
   @@map("users")
 }
@@ -151,6 +155,10 @@ model Customer {
   lineId       String?      @map("line_id") @db.VarChar(100)
   isLineLinked Boolean      @default(false) @map("is_line_linked")
   linePictureUrl String?    @map("line_picture_url") @db.VarChar(500)
+  lineLinkCode String?      @unique @map("line_link_code") @db.VarChar(16)
+  lineLinkCodeExpiresAt DateTime? @map("line_link_code_expires_at")
+  consentAcceptedAt DateTime? @map("consent_accepted_at")
+  anonymizedAt DateTime?    @map("anonymized_at")
   address      String?      @db.Text
   idCardNumber String       @unique @map("id_card_number") @db.VarChar(13)
   type         CustomerType @default(personal)
@@ -473,4 +481,111 @@ model ContractSale {
   @@index([contractId])
   @@index([saleId])
   @@map("contract_sales")
+}
+
+model SystemSetting {
+  key       String   @id @db.VarChar(64)
+  value     String   @db.VarChar(500)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+enum NotificationBatchStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+model NotificationBatch {
+  id              String                  @id @default(uuid()) @db.VarChar(36)
+  source          String                  @default("manual") @db.VarChar(20)
+  channel         NotificationChannel?
+  status          NotificationBatchStatus @default(pending)
+  totalCount      Int                     @default(0) @map("total_count")
+  sentCount       Int                     @default(0) @map("sent_count")
+  failedCount     Int                     @default(0) @map("failed_count")
+  createdByUserId String?                 @map("created_by_user_id") @db.VarChar(36)
+  createdAt       DateTime                @default(now()) @map("created_at")
+  startedAt       DateTime?               @map("started_at")
+  completedAt     DateTime?               @map("completed_at")
+
+  createdBy User?                   @relation("BatchCreatedBy", fields: [createdByUserId], references: [id])
+  items     NotificationBatchItem[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("notification_batches")
+}
+
+model NotificationBatchItem {
+  id             String               @id @default(uuid()) @db.VarChar(36)
+  batchId        String               @map("batch_id") @db.VarChar(36)
+  installmentId  String               @map("installment_id") @db.VarChar(36)
+  customerId     String?              @map("customer_id") @db.VarChar(36)
+  customerName   String?              @map("customer_name") @db.VarChar(255)
+  contractNumber String?              @map("contract_number") @db.VarChar(50)
+  amount         Decimal?             @db.Decimal(12, 2)
+  channel        NotificationChannel?
+  status         NotificationStatus   @default(pending)
+  error          String?              @db.VarChar(500)
+  sentAt         DateTime?            @map("sent_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  batch NotificationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([installmentId])
+  @@map("notification_batch_items")
+}
+
+model Role {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  name      String   @unique @db.VarChar(100)
+  parentId  String?  @map("parent_id") @db.VarChar(36)
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  parent      Role?            @relation("RoleTree", fields: [parentId], references: [id])
+  children    Role[]           @relation("RoleTree")
+  permissions RolePermission[]
+  users       User[]
+
+  @@index([parentId])
+  @@map("roles")
+}
+
+model RolePermission {
+  id     String         @id @default(uuid()) @db.VarChar(36)
+  roleId String         @map("role_id") @db.VarChar(36)
+  page   PermissionPage
+  action String         @db.VarChar(40)
+  allow  Boolean
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, page, action])
+  @@index([roleId])
+  @@map("role_permissions")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  userId    String?  @map("user_id") @db.VarChar(36)
+  userName  String?  @map("user_name") @db.VarChar(255)
+  action    String   @db.VarChar(20)
+  entity    String   @db.VarChar(60)
+  entityId  String?  @map("entity_id") @db.VarChar(64)
+  summary   String   @db.VarChar(500)
+  changes   Json?
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  statusCode Int?    @map("status_code")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

@@ -1,12 +1,12 @@
 import { Router, type IRouter } from "express";
 import { createAddonSchema, updateAddonSchema } from "./addons.schemas.js";
 import { createAddon, listAddons, updateAddon } from "./addons.service.js";
-import { requireAuth } from "../../middleware/auth.js";
+import { requireAuth, requirePermission } from "../../middleware/auth.js";
 
 export const addonsRouter: IRouter = Router();
 
 // POST /api/v1/addons
-addonsRouter.post("/", requireAuth, async (req, res) => {
+addonsRouter.post("/", requireAuth, requirePermission("inventory", "edit"), async (req, res) => {
   const parsed = createAddonSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -23,7 +23,7 @@ addonsRouter.post("/", requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/addons
-addonsRouter.get("/", requireAuth, async (req, res) => {
+addonsRouter.get("/", requireAuth, requirePermission("inventory", "view"), async (req, res) => {
   try {
     const { type, search } = req.query;
     const result = await listAddons({
@@ -38,7 +38,7 @@ addonsRouter.get("/", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/v1/addons/:id
-addonsRouter.patch("/:id", requireAuth, async (req, res) => {
+addonsRouter.patch("/:id", requireAuth, requirePermission("inventory", "edit"), async (req, res) => {
   const parsed = updateAddonSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });

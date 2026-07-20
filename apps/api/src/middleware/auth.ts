@@ -73,43 +73,56 @@ export function requireRole(...roles: Array<"admin" | "staff" | "viewer">) {
   };
 }
 
-type PermissionAction = "canView" | "canCreate" | "canEdit" | "canDelete";
 type PermissionPage =
   | "dashboard"
   | "inventory"
   | "receiving"
   | "sales"
   | "customers"
+  | "contracts"
   | "finance"
   | "payments"
   | "settings";
 
 /**
- * Middleware that checks page-level permissions.
- * Admin users always pass. Other roles are checked against the UserPermission table.
+ * Resolve the effective permission map for the requesting user, using their
+ * assigned Role (tree with inheritance) and falling back to the legacy enum
+ * for users not yet assigned a Role row. Admins always get everything.
+ */
+export async function resolveUserPermissions(
+  userId: string,
+  enumRole: "admin" | "staff" | "viewer"
+): Promise<Record<string, boolean>> {
+  const { getEffectivePermissions, legacyEnumPermissions } = await import(
+    "../modules/roles/roles.service.js"
+  );
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { roleId: true },
+  });
+  if (user?.roleId) {
+    return getEffectivePermissions(user.roleId);
+  }
+  return legacyEnumPermissions(enumRole);
+}
+
+/**
+ * Middleware that checks a role-tree permission ("<page>.<action>").
  * Must be used AFTER requireAuth.
  */
-export function requirePermission(page: PermissionPage, action: PermissionAction) {
+export function requirePermission(page: PermissionPage, action: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
-    // Admins bypass all page-level permission checks
-    if (req.user.role === "admin") {
-      next();
-      return;
-    }
-
-    prisma.userPermission
-      .findUnique({
-        where: { userId_page: { userId: req.user.sub, page } },
-        select: { [action]: true },
-      })
-      .then((permission) => {
-        if (!permission || !permission[action as keyof typeof permission]) {
-          res.status(403).json({ error: `Forbidden: missing ${action} permission on ${page}` });
+    resolveUserPermissions(req.user.sub, req.user.role)
+      .then((perms) => {
+        if (!perms[`${page}.${action}`]) {
+          res
+            .status(403)
+            .json({ error: `ไม่มีสิทธิ์ ${action} ในหน้า ${page} (Forbidden)` });
           return;
         }
         next();

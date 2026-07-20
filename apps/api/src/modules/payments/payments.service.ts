@@ -4,7 +4,7 @@ import { createTaxInvoice } from "./invoices.service.js";
 import { sendPaymentConfirmation } from "../notifications/notifications.service.js";
 
 export async function listPayments(query: ListPaymentsQuery) {
-  const { installment_id, contract_id, contract_number, sale_id, payment_channel, verified, page, limit } = query;
+  const { installment_id, contract_id, contract_number, sale_id, payment_channel, verified, date, page, limit } = query;
   const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};
@@ -31,6 +31,11 @@ export async function listPayments(query: ListPaymentsQuery) {
   if (verified !== undefined) {
     where.verified = verified;
   }
+  if (date) {
+    const startOfDay = new Date(`${date}T00:00:00`);
+    const endOfDay = new Date(`${date}T23:59:59.999`);
+    where.paymentDate = { gte: startOfDay, lte: endOfDay };
+  }
 
   const [data, total] = await Promise.all([
     prisma.payment.findMany({
@@ -52,7 +57,7 @@ export async function listPayments(query: ListPaymentsQuery) {
         taxInvoices: true,
       },
       orderBy: [
-        { paymentChannel: "desc" },
+        { paymentDate: "desc" },
         { createdAt: "desc" },
       ],
     }),

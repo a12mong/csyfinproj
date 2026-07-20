@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { requireAuth } from "../../middleware/auth.js";
+import { requireAuth, requirePermission } from "../../middleware/auth.js";
 import {
   createDeliveryNoteSchema,
   listDeliveryNotesSchema,
@@ -17,7 +17,7 @@ export const deliveryNotesRouter: IRouter = Router();
 deliveryNotesRouter.use(requireAuth);
 
 // GET /api/v1/delivery-notes
-deliveryNotesRouter.get("/", async (req, res) => {
+deliveryNotesRouter.get("/", requirePermission("receiving", "view"), async (req, res) => {
   const parsed = listDeliveryNotesSchema.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -34,9 +34,9 @@ deliveryNotesRouter.get("/", async (req, res) => {
 });
 
 // GET /api/v1/delivery-notes/:id
-deliveryNotesRouter.get("/:id", async (req, res) => {
+deliveryNotesRouter.get("/:id", requirePermission("receiving", "view"), async (req, res) => {
   try {
-    const result = await getDeliveryNote(req.params.id);
+    const result = await getDeliveryNote(req.params["id"] as string);
     res.json(result);
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };
@@ -45,7 +45,7 @@ deliveryNotesRouter.get("/:id", async (req, res) => {
 });
 
 // POST /api/v1/delivery-notes
-deliveryNotesRouter.post("/", async (req, res) => {
+deliveryNotesRouter.post("/", requirePermission("receiving", "edit"), async (req, res) => {
   const parsed = createDeliveryNoteSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -62,7 +62,7 @@ deliveryNotesRouter.post("/", async (req, res) => {
 });
 
 // PATCH /api/v1/delivery-notes/:id
-deliveryNotesRouter.patch("/:id", async (req, res) => {
+deliveryNotesRouter.patch("/:id", requirePermission("receiving", "edit"), async (req, res) => {
   const parsed = updateDeliveryNoteSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -70,7 +70,7 @@ deliveryNotesRouter.patch("/:id", async (req, res) => {
   }
 
   try {
-    const result = await updateDeliveryNote(req.params.id, parsed.data);
+    const result = await updateDeliveryNote(req.params["id"] as string, parsed.data);
     res.json(result);
   } catch (err: unknown) {
     const e = err as { statusCode?: number; message?: string };

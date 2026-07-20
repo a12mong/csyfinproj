@@ -12,7 +12,7 @@ import {
   verifyPayment,
   getPaymentDetail,
 } from "./payments.service.js";
-import { requireAuth } from "../../middleware/auth.js";
+import { requireAuth, requirePermission } from "../../middleware/auth.js";
 import { uploadSlip } from "../../lib/upload.js";
 import { generateInvoiceHtml } from "./invoices-print.js";
 import { prisma } from "../../lib/prisma.js";
@@ -20,7 +20,7 @@ import { prisma } from "../../lib/prisma.js";
 export const paymentsRouter: IRouter = Router();
 
 // GET /api/v1/payments — list payments with optional filters
-paymentsRouter.get("/", requireAuth, async (req: Request, res: Response) => {
+paymentsRouter.get("/", requireAuth, requirePermission("payments", "view"), async (req: Request, res: Response) => {
   const parsed = listPaymentsQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -40,6 +40,7 @@ paymentsRouter.get("/", requireAuth, async (req: Request, res: Response) => {
 paymentsRouter.post(
   "/",
   requireAuth,
+  requirePermission("payments", "edit"),
   (req: Request, res: Response, next) => {
     uploadSlip.single("slip_image")(req, res, (err) => {
       if (err instanceof multer.MulterError) {
@@ -79,7 +80,7 @@ paymentsRouter.post(
 );
 
 // PATCH /api/v1/payments/:id/verify
-paymentsRouter.patch("/:id/verify", requireAuth, async (req, res) => {
+paymentsRouter.patch("/:id/verify", requireAuth, requirePermission("payments", "approve_payment"), async (req, res) => {
   const parsed = verifyPaymentSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -97,7 +98,7 @@ paymentsRouter.patch("/:id/verify", requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/payments/invoices/:id/print
-paymentsRouter.get("/invoices/:id/print", requireAuth, async (req, res) => {
+paymentsRouter.get("/invoices/:id/print", requireAuth, requirePermission("payments", "view"), async (req, res) => {
   try {
     const invoice = await prisma.taxInvoice.findUnique({
       where: { id: req.params["id"] as string },
@@ -123,7 +124,7 @@ paymentsRouter.get("/invoices/:id/print", requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/payments/:id
-paymentsRouter.get("/:id", requireAuth, async (req, res) => {
+paymentsRouter.get("/:id", requireAuth, requirePermission("payments", "view"), async (req, res) => {
   try {
     const result = await getPaymentDetail(req.params["id"] as string);
     res.json(result);

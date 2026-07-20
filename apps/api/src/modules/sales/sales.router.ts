@@ -1,12 +1,12 @@
 import { Router, type IRouter } from "express";
 import { createSaleSchema, updateSaleSchema } from "./sales.schemas.js";
 import { createSale, listSales, getSaleDetail, updateSale } from "./sales.service.js";
-import { requireAuth } from "../../middleware/auth.js";
+import { requireAuth, requirePermission } from "../../middleware/auth.js";
 
 export const salesRouter: IRouter = Router();
 
 // POST /api/v1/sales
-salesRouter.post("/", requireAuth, async (req, res) => {
+salesRouter.post("/", requireAuth, requirePermission("sales", "edit"), async (req, res) => {
   const parsed = createSaleSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -24,7 +24,7 @@ salesRouter.post("/", requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/sales
-salesRouter.get("/", requireAuth, async (req, res) => {
+salesRouter.get("/", requireAuth, requirePermission("sales", "view"), async (req, res) => {
   try {
     const status = req.query.status as string | undefined;
     const customer_id = req.query.customer_id as string | undefined;
@@ -41,7 +41,7 @@ salesRouter.get("/", requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/sales/:id
-salesRouter.get("/:id", requireAuth, async (req, res) => {
+salesRouter.get("/:id", requireAuth, requirePermission("sales", "view"), async (req, res) => {
   try {
     const result = await getSaleDetail(req.params["id"] as string);
     res.json(result);
@@ -52,7 +52,7 @@ salesRouter.get("/:id", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/v1/sales/:id
-salesRouter.patch("/:id", requireAuth, async (req, res) => {
+salesRouter.patch("/:id", requireAuth, requirePermission("sales", "edit"), async (req, res) => {
   const parsed = updateSaleSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });

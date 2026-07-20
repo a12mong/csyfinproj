@@ -12,12 +12,12 @@ import {
   generateContractInstallments,
 } from "./contracts.service.js";
 import { generateCoverPageHtml, generateFullAgreementHtml } from "./contracts-print.js";
-import { requireAuth } from "../../middleware/auth.js";
+import { requireAuth, requirePermission } from "../../middleware/auth.js";
 
 export const contractsRouter: IRouter = Router();
 
 // POST /api/v1/contracts
-contractsRouter.post("/", requireAuth, async (req, res) => {
+contractsRouter.post("/", requireAuth, requirePermission("contracts", "edit"), async (req, res) => {
   const parsed = createContractSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -35,7 +35,7 @@ contractsRouter.post("/", requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/contracts
-contractsRouter.get("/", requireAuth, async (req, res) => {
+contractsRouter.get("/", requireAuth, requirePermission("contracts", "view"), async (req, res) => {
   const parsed = listContractsQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -52,7 +52,7 @@ contractsRouter.get("/", requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/contracts/:id
-contractsRouter.get("/:id", requireAuth, async (req, res) => {
+contractsRouter.get("/:id", requireAuth, requirePermission("contracts", "view"), async (req, res) => {
   try {
     const result = await getContractDetail(req.params["id"] as string);
     res.json(result);
@@ -63,7 +63,7 @@ contractsRouter.get("/:id", requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/contracts/:id/print/cover
-contractsRouter.get("/:id/print/cover", requireAuth, async (req, res) => {
+contractsRouter.get("/:id/print/cover", requireAuth, requirePermission("contracts", "view"), async (req, res) => {
   try {
     const result = await getContractDetail(req.params["id"] as string);
     const html = generateCoverPageHtml(result.data);
@@ -76,7 +76,7 @@ contractsRouter.get("/:id/print/cover", requireAuth, async (req, res) => {
 });
 
 // GET /api/v1/contracts/:id/print/full
-contractsRouter.get("/:id/print/full", requireAuth, async (req, res) => {
+contractsRouter.get("/:id/print/full", requireAuth, requirePermission("contracts", "view"), async (req, res) => {
   try {
     const result = await getContractDetail(req.params["id"] as string);
     const html = generateFullAgreementHtml(result.data);
@@ -89,7 +89,7 @@ contractsRouter.get("/:id/print/full", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/v1/contracts/:id
-contractsRouter.patch("/:id", requireAuth, async (req, res) => {
+contractsRouter.patch("/:id", requireAuth, requirePermission("contracts", "edit"), async (req, res) => {
   const parsed = updateContractSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
@@ -106,7 +106,7 @@ contractsRouter.patch("/:id", requireAuth, async (req, res) => {
 });
 
 // POST /api/v1/contracts/:id/generate-installments
-contractsRouter.post("/:id/generate-installments", requireAuth, async (req, res) => {
+contractsRouter.post("/:id/generate-installments", requireAuth, requirePermission("contracts", "edit"), async (req, res) => {
   try {
     const result = await generateContractInstallments(req.params["id"] as string);
     res.status(201).json(result);

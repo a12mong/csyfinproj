@@ -8,6 +8,10 @@ export const listInstallmentsQuerySchema = z.object({
     .string()
     .transform((v) => v === "true")
     .optional(),
+  open: z
+    .string()
+    .transform((v) => v === "true")
+    .optional(),
   page: z
     .string()
     .transform((v) => parseInt(v))
