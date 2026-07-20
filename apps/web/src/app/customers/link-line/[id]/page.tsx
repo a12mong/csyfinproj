@@ -180,7 +180,7 @@ export default function LinkLinePage() {
               <div className="space-y-2">
                 <h2 className="text-2xl font-bold text-gray-900">Successfully Connected!</h2>
                 <p className="text-sm text-gray-500">
-                  <span className="font-semibold text-gray-700">{customer?.name}</span>'s LINE account has been securely linked to their database record.
+                  <span className="font-semibold text-gray-700">{customer?.name}</span>&apos;s LINE account has been securely linked to their database record.
                 </p>
               </div>
 
