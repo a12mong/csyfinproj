@@ -1,0 +1,17 @@
+# Overlay for building/testing the production stack on a local machine:
+#   cd deploy
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+# (needs a .env in this folder — copy from .env.example)
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api/v1}
+        NEXT_PUBLIC_LIFF_ID: ${NEXT_PUBLIC_LIFF_ID:-}

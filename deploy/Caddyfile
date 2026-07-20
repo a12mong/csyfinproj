@@ -1,0 +1,19 @@
+# Reverse proxy: single origin for both web and api.
+#   SITE_ADDRESS=app.example.com  → automatic HTTPS (Let's Encrypt)
+#   SITE_ADDRESS=:80              → plain HTTP (IP-only, before DNS is ready)
+{$SITE_ADDRESS}
+
+encode gzip
+
+# API + uploaded files → Express (:4000)
+handle /api/* {
+	reverse_proxy api:4000
+}
+handle /uploads/* {
+	reverse_proxy api:4000
+}
+
+# Everything else → Next.js (:3000)
+handle {
+	reverse_proxy web:3000
+}

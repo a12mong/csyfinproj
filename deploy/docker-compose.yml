@@ -1,0 +1,86 @@
+# Production stack for the DigitalOcean droplet.
+# Lives at /opt/csyfinproj on the server together with Caddyfile and .env
+# (CI copies this file + Caddyfile on every deploy).
+name: csyfinproj
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-csyfinproj}
+      MYSQL_USER: ${MYSQL_USER:-csyfin}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    # Bound to localhost only — reachable from the droplet itself / SSH tunnel,
+    # never from the internet. Used for seeding and manual inspection.
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api:
+    image: ghcr.io/${GHCR_OWNER}/csyfinproj-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL:-mysql://${MYSQL_USER:-csyfin}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-csyfinproj}}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      PUBLIC_API_URL: ${PUBLIC_API_URL}
+      UPLOAD_DIR: /app/uploads
+      SECURE_UPLOAD_DIR: /app/secure-uploads
+      VAT_RATE: ${VAT_RATE:-7}
+      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN:-}
+      LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
+      LINE_CHANNEL_ID: ${LINE_CHANNEL_ID:-}
+      SMS_API_KEY: ${SMS_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+    volumes:
+      - uploads:/app/uploads
+      - secure_uploads:/app/secure-uploads
+
+  web:
+    image: ghcr.io/${GHCR_OWNER}/csyfinproj-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  db_data:
+  uploads:
+  secure_uploads:
+  caddy_data:
+  caddy_config:
