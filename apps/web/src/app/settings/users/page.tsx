@@ -16,6 +16,8 @@ interface UserDto {
   email: string;
   name: string;
   role: "admin" | "staff" | "viewer";
+  roleId?: string | null;
+  roleName?: string | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -97,11 +99,36 @@ interface CreateUserFormProps {
   onCancel: () => void;
 }
 
+interface RoleOption {
+  id: string;
+  name: string;
+  parentId: string | null;
+  isSystem: boolean;
+}
+
+function useRoleOptions() {
+  const [roles, setRoles] = useState<RoleOption[]>([]);
+  useEffect(() => {
+    apiFetch<{ data: RoleOption[] }>("/roles")
+      .then((res) => setRoles(res.data))
+      .catch(() => setRoles([]));
+  }, []);
+  return roles;
+}
+
 function CreateUserForm({ onSuccess, onCancel }: CreateUserFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"admin" | "staff" | "viewer">("staff");
+  const roles = useRoleOptions();
+  const [roleId, setRoleId] = useState("");
+  useEffect(() => {
+    if (!roleId && roles.length > 0) {
+      const staff = roles.find((r) => r.name === "Staff") ?? roles.find((r) => !r.isSystem);
+      setRoleId((staff ?? roles[0]!).id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roles]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,7 +139,7 @@ function CreateUserForm({ onSuccess, onCancel }: CreateUserFormProps) {
     try {
       const res = await apiFetch<{ data: UserDto }>("/users", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), password, role }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password, role_id: roleId }),
       });
       toastSuccess("User created successfully");
       onSuccess(res.data);
@@ -174,14 +201,20 @@ function CreateUserForm({ onSuccess, onCancel }: CreateUserFormProps) {
           Role <span className="text-red-500">*</span>
         </label>
         <select
-          value={role}
-          onChange={(e) => setRole(e.target.value as typeof role)}
+          value={roleId}
+          onChange={(e) => setRoleId(e.target.value)}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
         >
-          <option value="staff">Staff</option>
-          <option value="admin">Admin</option>
-          <option value="viewer">Viewer</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+              {r.isSystem ? " (ระบบ)" : ""}
+            </option>
+          ))}
         </select>
+        <p className="mt-1 text-[11px] text-gray-400">
+          จัดการสิทธิ์ของแต่ละ role ได้ที่ ตั้งค่า → Role และสิทธิ์
+        </p>
       </div>
 
       {error && (
@@ -219,31 +252,24 @@ interface EditUserFormProps {
 }
 
 function EditUserForm({ user, onSuccess, onCancel }: EditUserFormProps) {
-  const [activeTab, setActiveTab] = useState<"profile" | "permissions">("profile");
+  const roles = useRoleOptions();
 
   // Profile state
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
-  const [role, setRole] = useState<"admin" | "staff" | "viewer">(user.role);
+  const [roleId, setRoleId] = useState(user.roleId ?? "");
+  useEffect(() => {
+    if (!roleId && roles.length > 0) {
+      // Fall back to the role row matching the legacy enum name
+      const byEnum = roles.find(
+        (r) => r.name.toLowerCase() === (user.role === "admin" ? "admin" : user.role)
+      );
+      setRoleId((byEnum ?? roles[0]!).id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roles]);
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-
-  // Permissions state
-  const [permissions, setPermissions] = useState<PermissionEntry[]>([]);
-  const [permsLoading, setPermsLoading] = useState(false);
-  const [permsSubmitting, setPermsSubmitting] = useState(false);
-  const [permsError, setPermsError] = useState<string | null>(null);
-
-  // Load permissions when permissions tab is opened
-  useEffect(() => {
-    if (activeTab !== "permissions") return;
-    setPermsLoading(true);
-    setPermsError(null);
-    apiFetch<{ data: PermissionEntry[] }>(`/users/${user.id}/permissions`)
-      .then((res) => setPermissions(res.data))
-      .catch((err) => setPermsError(err instanceof Error ? err.message : "Failed to load permissions"))
-      .finally(() => setPermsLoading(false));
-  }, [activeTab, user.id]);
 
   async function handleProfileSubmit(e: FormEvent) {
     e.preventDefault();
@@ -252,7 +278,7 @@ function EditUserForm({ user, onSuccess, onCancel }: EditUserFormProps) {
     try {
       const res = await apiFetch<{ data: UserDto }>(`/users/${user.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), role }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), role_id: roleId }),
       });
       toastSuccess("User updated successfully");
       onSuccess(res.data);
@@ -264,57 +290,12 @@ function EditUserForm({ user, onSuccess, onCancel }: EditUserFormProps) {
     }
   }
 
-  function togglePermission(page: PermissionPage, action: keyof PagePermission) {
-    setPermissions((prev) =>
-      prev.map((entry) =>
-        entry.page === page ? { ...entry, [action]: !entry[action] } : entry
-      )
-    );
-  }
-
-  async function handlePermissionsSubmit(e: FormEvent) {
-    e.preventDefault();
-    setPermsError(null);
-    setPermsSubmitting(true);
-    try {
-      await apiFetch(`/users/${user.id}/permissions`, {
-        method: "PUT",
-        body: JSON.stringify({ permissions }),
-      });
-      toastSuccess("Permissions updated successfully");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to update permissions";
-      setPermsError(msg);
-      alertError(msg);
-    } finally {
-      setPermsSubmitting(false);
-    }
-  }
-
   const isAdmin = user.role === "admin";
 
   return (
     <div>
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 mb-4">
-        {(["profile", "permissions"] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px ${
-              activeTab === tab
-                ? "border-primary-600 text-primary-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
 
-      {/* Profile Tab */}
-      {activeTab === "profile" && (
+      {(
         <form onSubmit={handleProfileSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -347,14 +328,20 @@ function EditUserForm({ user, onSuccess, onCancel }: EditUserFormProps) {
               Role <span className="text-red-500">*</span>
             </label>
             <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as typeof role)}
+              value={roleId}
+              onChange={(e) => setRoleId(e.target.value)}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             >
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
-              <option value="viewer">Viewer</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                  {r.isSystem ? " (ระบบ)" : ""}
+                </option>
+              ))}
             </select>
+            <p className="mt-1 text-[11px] text-gray-400">
+              สิทธิ์ทั้งหมดกำหนดผ่าน role — จัดการได้ที่ ตั้งค่า → Role และสิทธิ์
+            </p>
           </div>
 
           {profileError && (
@@ -382,92 +369,6 @@ function EditUserForm({ user, onSuccess, onCancel }: EditUserFormProps) {
         </form>
       )}
 
-      {/* Permissions Tab */}
-      {activeTab === "permissions" && (
-        <form onSubmit={handlePermissionsSubmit}>
-          {isAdmin && (
-            <div className="mb-4 rounded-md border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-700">
-              Admin users have full access to all pages. Permissions cannot be customised.
-            </div>
-          )}
-
-          {permsLoading ? (
-            <div className="space-y-2 mb-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />
-              ))}
-            </div>
-          ) : permsError ? (
-            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {permsError}
-            </div>
-          ) : (
-            <div className="overflow-x-auto mb-4">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-2 pr-4 font-medium text-gray-600 w-32">Page</th>
-                    {PERMISSION_ACTIONS.map((a) => (
-                      <th key={a.key} className="text-center py-2 px-3 font-medium text-gray-600">
-                        {a.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {PERMISSION_PAGES.map((page) => {
-                    const entry = permissions.find((p) => p.page === page);
-                    return (
-                      <tr key={page} className="border-b border-gray-50">
-                        <td className="py-2 pr-4 text-gray-700 capitalize">
-                          {PAGE_LABELS[page]}
-                        </td>
-                        {PERMISSION_ACTIONS.map(({ key }) => {
-                          const checked = isAdmin ? true : (entry?.[key] ?? false);
-                          return (
-                            <td key={key} className="text-center py-2 px-3">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={isAdmin || !entry}
-                                onChange={() => togglePermission(page, key)}
-                                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed"
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {permsError && (
-            <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {permsError}
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-2 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={permsSubmitting || isAdmin || permsLoading}
-              className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-            >
-              {permsSubmitting ? "Saving…" : "Save Permissions"}
-            </button>
-          </div>
-        </form>
-      )}
     </div>
   );
 }

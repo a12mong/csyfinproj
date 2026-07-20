@@ -32,7 +32,7 @@ export default function LoginPage() {
       login(data.user);
       router.push("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "เข้าสู่ระบบไม่สำเร็จ");
     } finally {
       setIsSubmitting(false);
     }
@@ -45,12 +45,12 @@ export default function LoginPage() {
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900">CSYFinproj</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Yamaha Motorcycle Sales &amp; Finance
+            ระบบขายและสินเชื่อรถจักรยานยนต์ Yamaha
           </p>
         </div>
 
         <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-          <h2 className="mb-6 text-xl font-semibold text-gray-800">Sign in</h2>
+          <h2 className="mb-6 text-xl font-semibold text-gray-800">เข้าสู่ระบบ</h2>
 
           {error && (
             <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -64,7 +64,7 @@ export default function LoginPage() {
                 htmlFor="email"
                 className="block text-sm font-medium text-gray-700"
               >
-                Email
+                อีเมล
               </label>
               <input
                 id="email"
@@ -83,7 +83,7 @@ export default function LoginPage() {
                 htmlFor="password"
                 className="block text-sm font-medium text-gray-700"
               >
-                Password
+                รหัสผ่าน
               </label>
               <input
                 id="password"
@@ -102,7 +102,7 @@ export default function LoginPage() {
               disabled={isSubmitting}
               className="mt-2 w-full rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isSubmitting ? "Signing in…" : "Sign in"}
+              {isSubmitting ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
             </button>
           </form>
         </div>

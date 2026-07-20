@@ -6,6 +6,7 @@ import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
 import { confirm, toastSuccess, alertError } from "@/lib/swal";
+import { formatPrice, formatDate, TH } from "@/lib/format";
 
 // ─── API shapes (snake_case from backend) ─────────────────────────────────────
 
@@ -65,24 +66,11 @@ const ITEM_TYPE_STYLES: Record<string, string> = {
   accessory: "bg-purple-50 text-purple-700",
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatPrice(n: number) {
-  return new Intl.NumberFormat("th-TH", {
-    style: "currency",
-    currency: "THB",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
+const ITEM_TYPE_TH: Record<string, string> = {
+  motorcycle: "รถจักรยานยนต์",
+  part: "อะไหล่",
+  accessory: "อุปกรณ์เสริม",
+};
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -103,7 +91,7 @@ export default function ReceivingDetailPage() {
       setNote(res.data);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to load delivery note"
+        err instanceof Error ? err.message : "โหลดใบรับสินค้าไม่สำเร็จ"
       );
     } finally {
       setLoading(false);
@@ -116,9 +104,9 @@ export default function ReceivingDetailPage() {
 
   async function handleVerify() {
     const ok = await confirm({
-      title: "Verify Delivery Note?",
-      text: "This will mark the note as verified. All motorcycle records will be confirmed in inventory.",
-      confirmText: "Verify",
+      title: "ยืนยันการตรวจรับใบรับสินค้า?",
+      text: "ใบรับสินค้าจะถูกทำเครื่องหมายว่าตรวจรับแล้ว และข้อมูลรถทั้งหมดจะถูกยืนยันเข้าคลังสินค้า",
+      confirmText: "ตรวจรับ",
       icon: "question",
     });
     if (!ok) return;
@@ -133,10 +121,10 @@ export default function ReceivingDetailPage() {
         }
       );
       setNote(res.data);
-      toastSuccess("Delivery note verified successfully");
+      toastSuccess("ตรวจรับใบรับสินค้าเรียบร้อยแล้ว");
     } catch (err) {
       alertError(
-        err instanceof Error ? err.message : "Failed to verify delivery note"
+        err instanceof Error ? err.message : "ตรวจรับใบรับสินค้าไม่สำเร็จ"
       );
     } finally {
       setActionLoading(false);
@@ -145,9 +133,9 @@ export default function ReceivingDetailPage() {
 
   async function handleCancel() {
     const ok = await confirm({
-      title: "Cancel Delivery Note?",
-      text: "Unsold motorcycles will be unlinked from this GRN. This cannot be undone.",
-      confirmText: "Cancel Note",
+      title: "ยกเลิกใบรับสินค้า?",
+      text: "รถที่ยังไม่ถูกขายจะถูกยกเลิกการเชื่อมโยงกับใบรับนี้ และไม่สามารถย้อนกลับได้",
+      confirmText: "ยกเลิกใบรับ",
       icon: "warning",
     });
     if (!ok) return;
@@ -162,10 +150,10 @@ export default function ReceivingDetailPage() {
         }
       );
       setNote(res.data);
-      toastSuccess("Delivery note cancelled");
+      toastSuccess("ยกเลิกใบรับสินค้าแล้ว");
     } catch (err) {
       alertError(
-        err instanceof Error ? err.message : "Failed to cancel delivery note"
+        err instanceof Error ? err.message : "ยกเลิกใบรับสินค้าไม่สำเร็จ"
       );
     } finally {
       setActionLoading(false);
@@ -205,13 +193,13 @@ export default function ReceivingDetailPage() {
       <DashboardLayout>
         <div className="px-8 py-8">
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">
-            {error ?? "Delivery note not found"}
+            {error ?? "ไม่พบใบรับสินค้า"}
           </div>
           <Link
             href="/receiving"
             className="text-sm text-primary-600 hover:underline"
           >
-            ← Back to Receiving
+            ← กลับไปหน้ารับสินค้าเข้า
           </Link>
         </div>
       </DashboardLayout>
@@ -230,7 +218,7 @@ export default function ReceivingDetailPage() {
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-5">
           <Link href="/receiving" className="hover:text-primary-600">
-            Receiving
+            รับสินค้าเข้า
           </Link>
           <span>/</span>
           <span className="text-gray-900 font-medium">{note.note_number}</span>
@@ -248,7 +236,7 @@ export default function ReceivingDetailPage() {
                   STATUS_STYLES[note.status] ?? "bg-gray-100 text-gray-500"
                 }`}
               >
-                {note.status}
+                {TH.grnStatus[note.status] ?? note.status}
               </span>
             </div>
             <p className="text-sm text-gray-500 mt-1">{note.supplier_name}</p>
@@ -261,14 +249,14 @@ export default function ReceivingDetailPage() {
                 disabled={actionLoading}
                 className="px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
               >
-                Cancel Note
+                ยกเลิกใบรับ
               </button>
               <button
                 onClick={handleVerify}
                 disabled={actionLoading}
                 className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
-                Verify Note
+                ตรวจรับ
               </button>
             </div>
           )}
@@ -277,16 +265,16 @@ export default function ReceivingDetailPage() {
         {/* Info cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[
-            { label: "Received Date", value: formatDate(note.received_date) },
+            { label: "วันที่รับ", value: formatDate(note.received_date) },
             {
-              label: "Received By",
+              label: "ผู้รับสินค้า",
               value: note.received_by?.name ?? note.received_by_user_id,
             },
             {
-              label: "Total Items",
-              value: `${note.items.length} line${note.items.length !== 1 ? "s" : ""}`,
+              label: "จำนวนรายการ",
+              value: `${note.items.length} รายการ`,
             },
-            { label: "Total Value", value: formatPrice(totalValue) },
+            { label: "มูลค่ารวม", value: formatPrice(totalValue) },
           ].map((card) => (
             <div
               key={card.label}
@@ -303,7 +291,7 @@ export default function ReceivingDetailPage() {
         {/* Notes */}
         {note.notes && (
           <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 mb-6">
-            <p className="text-xs text-gray-500 mb-1">Notes</p>
+            <p className="text-xs text-gray-500 mb-1">หมายเหตุ</p>
             <p className="text-sm text-gray-700">{note.notes}</p>
           </div>
         )}
@@ -312,7 +300,7 @@ export default function ReceivingDetailPage() {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-900">
-              Received Items
+              รายการที่รับเข้า
             </h2>
           </div>
 
@@ -329,7 +317,7 @@ export default function ReceivingDetailPage() {
                         "bg-gray-100 text-gray-600"
                       }`}
                     >
-                      {item.item_type}
+                      {ITEM_TYPE_TH[item.item_type] ?? item.item_type}
                     </span>
                     <span className="text-sm font-medium text-gray-900">
                       {item.description}
@@ -353,19 +341,19 @@ export default function ReceivingDetailPage() {
                         <thead>
                           <tr className="bg-gray-50 border-b border-gray-100">
                             <th className="text-left px-3 py-2 font-medium text-gray-500">
-                              Model / Year
+                              รุ่น / ปี
                             </th>
                             <th className="text-left px-3 py-2 font-medium text-gray-500">
-                              Chassis
+                              เลขตัวถัง
                             </th>
                             <th className="text-left px-3 py-2 font-medium text-gray-500">
-                              Engine
+                              เลขเครื่องยนต์
                             </th>
                             <th className="text-left px-3 py-2 font-medium text-gray-500">
-                              Color
+                              สี
                             </th>
                             <th className="text-left px-3 py-2 font-medium text-gray-500">
-                              Status
+                              สถานะ
                             </th>
                             <th className="px-3 py-2" />
                           </tr>
@@ -395,7 +383,7 @@ export default function ReceivingDetailPage() {
                                     "bg-gray-100 text-gray-500"
                                   }`}
                                 >
-                                  {moto.status.replace(/_/g, " ")}
+                                  {TH.motorcycleStatus[moto.status] ?? moto.status}
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-right">
@@ -403,7 +391,7 @@ export default function ReceivingDetailPage() {
                                   href={`/inventory/${moto.id}`}
                                   className="text-primary-600 hover:text-primary-700 font-medium"
                                 >
-                                  View →
+                                  ดู →
                                 </Link>
                               </td>
                             </tr>
@@ -417,7 +405,7 @@ export default function ReceivingDetailPage() {
                 {item.item_type === "motorcycle" &&
                   item.motorcycles.length === 0 && (
                     <p className="mt-2 text-xs text-gray-400 italic">
-                      No motorcycle records linked.
+                      ยังไม่มีข้อมูลรถที่เชื่อมโยง
                     </p>
                   )}
               </div>

@@ -5,29 +5,11 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
+import { formatPrice, formatDate, TH } from "@/lib/format";
 import type { SaleWithInstallments, Installment, Payment } from "@csyfinproj/shared";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-function formatPrice(n: number) {
-  return new Intl.NumberFormat("th-TH", {
-    style: "currency",
-    currency: "THB",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 // ─── installment status badge ─────────────────────────────────────────────────
 
@@ -38,13 +20,6 @@ const INSTALLMENT_STATUS_STYLES: Record<Installment["status"], string> = {
   partially_paid: "bg-orange-50 text-orange-700 border border-orange-200",
 };
 
-const INSTALLMENT_STATUS_LABELS: Record<Installment["status"], string> = {
-  pending: "ค้างชำระ (Pending)",
-  paid: "ชำระครบแล้ว (Paid)",
-  overdue: "เกินกำหนด (Overdue)",
-  partially_paid: "ชำระบางส่วน (Partial)",
-};
-
 function InstallmentBadge({ status }: { status: Installment["status"] }) {
   return (
     <span
@@ -52,7 +27,7 @@ function InstallmentBadge({ status }: { status: Installment["status"] }) {
         INSTALLMENT_STATUS_STYLES[status] ?? "bg-gray-100 text-gray-500"
       }`}
     >
-      {INSTALLMENT_STATUS_LABELS[status] ?? status}
+      {TH.installmentStatus[status] ?? status}
     </span>
   );
 }
@@ -64,12 +39,6 @@ const SALE_STATUS_STYLES: Record<string, string> = {
   completed: "bg-green-50 text-green-700",
   defaulted: "bg-red-50 text-red-700",
   cancelled: "bg-gray-100 text-gray-500",
-};
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cash: "Cash",
-  installment: "Installment",
-  finance_company: "Finance Company",
 };
 
 // ─── page ─────────────────────────────────────────────────────────────────────
@@ -90,7 +59,7 @@ export default function SaleDetailPage() {
         );
         setSale(res.data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load sale");
+        setError(err instanceof Error ? err.message : "ไม่สามารถโหลดข้อมูลรายการขายได้");
       } finally {
         setLoading(false);
       }
@@ -118,13 +87,13 @@ export default function SaleDetailPage() {
       <DashboardLayout>
         <div className="px-8 py-8">
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error ?? "Sale not found."}
+            {error ?? "ไม่พบรายการขาย"}
           </div>
           <Link
             href="/sales"
             className="mt-4 inline-block text-sm text-primary-600 hover:underline"
           >
-            ← Back to sales
+            ← กลับไปหน้ารายการขาย
           </Link>
         </div>
       </DashboardLayout>
@@ -151,7 +120,7 @@ export default function SaleDetailPage() {
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
           <Link href="/sales" className="hover:text-gray-700">
-            Sales
+            รายการขาย
           </Link>
           <span>/</span>
           <span className="text-gray-900 font-medium">
@@ -175,7 +144,7 @@ export default function SaleDetailPage() {
                   SALE_STATUS_STYLES[sale.status] ?? "bg-gray-100 text-gray-500"
                 }`}
               >
-                {sale.status}
+                {TH.saleStatus[sale.status] ?? sale.status}
               </span>
             </div>
           </div>
@@ -186,7 +155,7 @@ export default function SaleDetailPage() {
           <div className="mb-6 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3">
             <span className="text-green-600">✓</span>
             <p className="text-sm text-green-700">
-              This cash sale was completed immediately upon creation.
+              รายการขายเงินสดนี้เสร็จสิ้นทันทีเมื่อสร้าง
             </p>
           </div>
         )}
@@ -195,7 +164,7 @@ export default function SaleDetailPage() {
         {isFinanceCompany && (
           <div className="mb-6 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
             <p className="text-sm text-blue-700">
-              รายการขายนี้เป็นรายการขายผ่านบริษัทไฟแนนซ์ <strong>{sale.financeCompanyName ?? "บริษัทไฟแนนซ์"}</strong> (This sale is financed via <strong>{sale.financeCompanyName ?? "finance company"}</strong>).
+              รายการขายนี้เป็นรายการขายผ่านบริษัทไฟแนนซ์ <strong>{sale.financeCompanyName ?? "บริษัทไฟแนนซ์"}</strong>
             </p>
           </div>
         )}
@@ -204,13 +173,13 @@ export default function SaleDetailPage() {
         {(sale as any).linkedContract && (
           <div className="mb-6 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 flex items-center justify-between shadow-sm">
             <p className="text-sm text-emerald-800">
-              รายการขายนี้เชื่อมโยงกับสัญญาเช่าซื้อเลขที่: <strong>{(sale as any).linkedContract.contractNumber}</strong> (สถานะ: <span className="capitalize font-semibold">{(sale as any).linkedContract.status}</span>)
+              รายการขายนี้เชื่อมโยงกับสัญญาเช่าซื้อเลขที่: <strong>{(sale as any).linkedContract.contractNumber}</strong> (สถานะ: <span className="capitalize font-semibold">{TH.contractStatus[(sale as any).linkedContract.status] ?? (sale as any).linkedContract.status}</span>)
             </p>
             <Link
               href={`/contracts/${(sale as any).linkedContract.id}`}
               className="text-xs font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition-colors border border-emerald-200"
             >
-              ไปหน้าสัญญา (Go to Contract) →
+              ไปหน้าสัญญา →
             </Link>
           </div>
         )}
@@ -218,13 +187,13 @@ export default function SaleDetailPage() {
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">Total Price</p>
+            <p className="text-xs text-gray-500 mb-1">ราคารวม</p>
             <p className="text-lg font-bold text-gray-900">
               {formatPrice(sale.totalPrice)}
             </p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">Down Payment</p>
+            <p className="text-xs text-gray-500 mb-1">เงินดาวน์</p>
             <p className="text-lg font-bold text-gray-900">
               {formatPrice(sale.downPayment)}
             </p>
@@ -232,14 +201,14 @@ export default function SaleDetailPage() {
           {!isCash && (
             <>
               <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs text-gray-500 mb-1">Finance Amount</p>
+                <p className="text-xs text-gray-500 mb-1">ยอดจัดไฟแนนซ์</p>
                 <p className="text-lg font-bold text-gray-900">
                   {formatPrice(sale.financeAmount)}
                 </p>
               </div>
               {isInstallment && (
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <p className="text-xs text-gray-500 mb-1">Remaining</p>
+                  <p className="text-xs text-gray-500 mb-1">คงเหลือ</p>
                   <p
                     className={`text-lg font-bold ${
                       remaining > 0 ? "text-gray-900" : "text-green-600"
@@ -258,7 +227,7 @@ export default function SaleDetailPage() {
           {/* Customer */}
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-              Customer
+              ลูกค้า
             </p>
             <p className="text-sm font-semibold text-gray-900">
               {sale.customer.name}
@@ -271,14 +240,14 @@ export default function SaleDetailPage() {
               href={`/customers/${sale.customer.id}`}
               className="mt-2 inline-block text-xs text-primary-600 hover:underline"
             >
-              View profile →
+              ดูโปรไฟล์ →
             </Link>
           </div>
 
           {/* Motorcycle */}
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-              Motorcycle
+              รถจักรยานยนต์
             </p>
             <p className="text-sm font-semibold text-gray-900">
               {sale.motorcycle.brand} {sale.motorcycle.model}{" "}
@@ -297,34 +266,34 @@ export default function SaleDetailPage() {
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 mb-6">
           {[
             {
-              label: "Payment Method",
+              label: "วิธีชำระเงิน",
               value: (
                 <span className="capitalize">
-                  {PAYMENT_METHOD_LABELS[sale.paymentMethod] ?? sale.paymentMethod}
+                  {TH.paymentMethod[sale.paymentMethod] ?? sale.paymentMethod}
                 </span>
               ),
             },
             ...(isFinanceCompany && sale.financeCompanyName
-              ? [{ label: "Financial Institution", value: sale.financeCompanyName }]
+              ? [{ label: "สถาบันการเงิน", value: sale.financeCompanyName }]
               : []),
             ...(isFinanceCompany && sale.financeReferenceNumber
-              ? [{ label: "Finance Reference #", value: sale.financeReferenceNumber }]
+              ? [{ label: "เลขอ้างอิงไฟแนนซ์", value: sale.financeReferenceNumber }]
               : []),
             ...(!isCash
-              ? [{ label: "Finance Amount", value: formatPrice(sale.financeAmount) }]
+              ? [{ label: "ยอดจัดไฟแนนซ์", value: formatPrice(sale.financeAmount) }]
               : []),
             ...(isInstallment
               ? [
-                  { label: "Installments", value: `${sale.numInstallments} months` },
-                  { label: "Interest Rate", value: `${sale.interestRate}% / year` },
+                  { label: "จำนวนงวด", value: `${sale.numInstallments} งวด` },
+                  { label: "อัตราดอกเบี้ย", value: `${sale.interestRate}% ต่อปี` },
                   {
-                    label: "Progress",
+                    label: "ความคืบหน้า",
                     value: (
                       <span>
-                        {paidCount} / {sale.installments.length} paid
+                        ชำระแล้ว {paidCount} / {sale.installments.length} งวด
                         {overdueCount > 0 && (
                           <span className="ml-2 text-red-600">
-                            ({overdueCount} overdue)
+                            (เกินกำหนด {overdueCount} งวด)
                           </span>
                         )}
                       </span>
@@ -335,12 +304,12 @@ export default function SaleDetailPage() {
             ...(sale.addons.length > 0
               ? [
                   {
-                    label: "Add-ons",
+                    label: "บริการเสริม",
                     value: sale.addons.map((a) => a.name).join(", "),
                   },
                 ]
               : []),
-            ...(sale.notes ? [{ label: "Notes", value: sale.notes }] : []),
+            ...(sale.notes ? [{ label: "หมายเหตุ", value: sale.notes }] : []),
           ].map(({ label, value }) => (
             <div
               key={label}
@@ -356,7 +325,7 @@ export default function SaleDetailPage() {
         {isInstallment && sale.installments.length > 0 && (
           <div>
             <h2 className="text-base font-semibold text-gray-900 mb-3">
-              Installment Schedule
+              ตารางผ่อนชำระ
             </h2>
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
@@ -367,19 +336,19 @@ export default function SaleDetailPage() {
                         #
                       </th>
                       <th className="text-left px-5 py-3 font-medium text-gray-500">
-                        Due Date
+                        กำหนดชำระ
                       </th>
                       <th className="text-right px-5 py-3 font-medium text-gray-500">
-                        Amount Due
+                        ยอดที่ต้องชำระ
                       </th>
                       <th className="text-right px-5 py-3 font-medium text-gray-500">
-                        Paid
+                        ชำระแล้ว
                       </th>
                       <th className="text-left px-5 py-3 font-medium text-gray-500">
-                        Payments & Invoices
+                        การชำระเงินและใบกำกับ
                       </th>
                       <th className="text-left px-5 py-3 font-medium text-gray-500">
-                        Status
+                        สถานะ
                       </th>
                     </tr>
                   </thead>
@@ -427,12 +396,12 @@ export default function SaleDetailPage() {
                                   <div key={p.id} className="border-b border-dashed border-gray-100 pb-1 last:border-0 last:pb-0">
                                     <div className="flex justify-between font-medium text-gray-800">
                                       <span>{formatPrice(Number(p.amount))}</span>
-                                      <span className="text-[10px] uppercase text-gray-400">{p.paymentChannel}</span>
+                                      <span className="text-[10px] uppercase text-gray-400">{TH.paymentChannel[p.paymentChannel] ?? p.paymentChannel}</span>
                                     </div>
                                     <div className="flex justify-between text-[10px] text-gray-400">
                                       <span>{formatDate(p.paymentDate)}</span>
                                       <span className={p.verified ? "text-green-600 font-semibold" : "text-amber-500 font-semibold"}>
-                                        {p.verified ? "Verified" : "Pending"}
+                                        {p.verified ? "ตรวจสอบแล้ว" : "รอตรวจสอบ"}
                                       </span>
                                     </div>
                                     {/* Tax Invoices linked to this payment */}
@@ -448,7 +417,7 @@ export default function SaleDetailPage() {
                                             e.stopPropagation();
                                           }}
                                         >
-                                          Print
+                                          พิมพ์
                                         </a>
                                       </div>
                                     ))}
@@ -482,16 +451,16 @@ export default function SaleDetailPage() {
         {isInstallment && sale.installments.length === 0 && !(sale as any).linkedContract && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-6">
             <h3 className="text-sm font-semibold text-yellow-800 mb-1">
-              สัญญายังไม่ถูกสร้าง (Contract Not Created)
+              สัญญายังไม่ถูกสร้าง
             </h3>
             <p className="text-sm text-yellow-700 mb-3">
-              รายการขายนี้เป็นการขายแบบ Installment (เช่าซื้อ) จำเป็นต้องสร้างสัญญาเช่าซื้อเพื่อกำหนดจำนวนงวด ดอกเบี้ย และคำนวณตารางผ่อนชำระ
+              รายการขายนี้เป็นการขายแบบผ่อนกับร้าน (เช่าซื้อ) จำเป็นต้องสร้างสัญญาเช่าซื้อเพื่อกำหนดจำนวนงวด ดอกเบี้ย และคำนวณตารางผ่อนชำระ
             </p>
             <Link
               href={`/contracts?open=new&customer_id=${sale.customerId}&sale_id=${sale.id}`}
               className="inline-flex items-center justify-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
             >
-              สร้างสัญญาเช่าซื้อ (Create Contract)
+              สร้างสัญญาเช่าซื้อ
             </Link>
           </div>
         )}
@@ -500,18 +469,18 @@ export default function SaleDetailPage() {
         {sale.addons && sale.addons.length > 0 && (
           <div className="mt-6">
             <h2 className="text-base font-semibold text-gray-900 mb-3">
-              รายละเอียดของแถมและบริการเสริม (Add-on Details)
+              รายละเอียดของแถมและบริการเสริม
             </h2>
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Type</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Billing Option</th>
-                      <th className="text-right px-5 py-3 font-medium text-gray-500">Cost Price</th>
-                      <th className="text-right px-5 py-3 font-medium text-gray-500">Selling Price</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">ชื่อ</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">ประเภท</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">รูปแบบการจ่ายเงิน</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">ราคาทุน</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">ราคาขาย</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -528,10 +497,10 @@ export default function SaleDetailPage() {
                               : "bg-gray-100 text-gray-700"
                           }`}>
                             {a.billingOption === "free_gift"
-                              ? "Free Gift (ของแถม)"
+                              ? "แถมฟรี"
                               : a.billingOption === "included_in_finance"
-                              ? "Included in Finance (รวมในไฟแนนซ์)"
-                              : "Pay Separately (จ่ายแยก)"}
+                              ? "รวมในยอดจัด"
+                              : "จ่ายแยก"}
                           </span>
                         </td>
                         <td className="px-5 py-3 text-right text-gray-500">
@@ -553,7 +522,7 @@ export default function SaleDetailPage() {
         {sale.taxInvoices && sale.taxInvoices.length > 0 && (
           <div className="mt-6">
             <h2 className="text-base font-semibold text-gray-900 mb-3">
-              พิมพ์ใบกำกับภาษี (Tax Invoices)
+              พิมพ์ใบกำกับภาษี
             </h2>
             <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
               {sale.taxInvoices.map((inv: any) => (
@@ -566,14 +535,14 @@ export default function SaleDetailPage() {
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      Issued: {formatDate(inv.issuedAt)} · Amount: <span className="font-semibold text-gray-900">{formatPrice(Number(inv.totalAmount))}</span> (VAT: {formatPrice(Number(inv.vatAmount))})
+                      ออกเมื่อ: {formatDate(inv.issuedAt)} · ยอดรวม: <span className="font-semibold text-gray-900">{formatPrice(Number(inv.totalAmount))}</span> (VAT: {formatPrice(Number(inv.vatAmount))})
                     </p>
                   </div>
                   <button
                     onClick={() => window.open(`${API_BASE_URL}/payments/invoices/${inv.id}/print`, "_blank")}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white hover:bg-primary-700 text-xs font-semibold rounded-lg transition-colors shadow-sm"
                   >
-                    🖨️ Print Invoice
+                    🖨️ พิมพ์ใบกำกับ
                   </button>
                 </div>
               ))}
@@ -586,7 +555,7 @@ export default function SaleDetailPage() {
             href="/sales"
             className="text-sm text-gray-500 hover:text-gray-700"
           >
-            ← Back to sales
+            ← กลับไปหน้ารายการขาย
           </Link>
         </div>
       </div>

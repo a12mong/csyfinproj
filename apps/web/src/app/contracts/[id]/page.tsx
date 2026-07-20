@@ -6,26 +6,8 @@ import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
 import { toastSuccess, alertError, confirm } from "@/lib/swal";
+import { formatPrice, formatDate, TH } from "@/lib/format";
 import type { ContractDetail, ContractInstallment, ContractParty } from "@csyfinproj/shared";
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-function formatPrice(n: number) {
-  return new Intl.NumberFormat("th-TH", {
-    style: "currency",
-    currency: "THB",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 // ─── Status configs ────────────────────────────────────────────────────────────
 
@@ -43,24 +25,23 @@ const INSTALLMENT_STATUS_STYLES: Record<ContractInstallment["status"], string> =
   partially_paid: "bg-orange-50 text-orange-700 border border-orange-200",
 };
 
-const INSTALLMENT_STATUS_LABELS: Record<ContractInstallment["status"], string> = {
-  pending: "ค้างชำระ (Pending)",
-  paid: "ชำระครบแล้ว (Paid)",
-  overdue: "เกินกำหนด (Overdue)",
-  partially_paid: "ชำระบางส่วน (Partial)",
-};
-
 const CONTRACT_STATUSES: Array<{ value: string; label: string }> = [
-  { value: "active", label: "Active" },
-  { value: "completed", label: "Completed" },
-  { value: "defaulted", label: "Defaulted" },
-  { value: "cancelled", label: "Cancelled" },
+  { value: "active", label: TH.contractStatus.active },
+  { value: "completed", label: TH.contractStatus.completed },
+  { value: "defaulted", label: TH.contractStatus.defaulted },
+  { value: "cancelled", label: TH.contractStatus.cancelled },
 ];
 
 const CONTRACT_PARTY_ROLE_LABELS: Record<ContractParty["role"], string> = {
-  owner: "Owner (Financial Institution)",
-  buyer: "Buyer (Customer)",
-  seller: "Seller (Shop)",
+  owner: "ผู้ให้เช่าซื้อ (สถาบันการเงิน)",
+  buyer: "ผู้เช่าซื้อ (ลูกค้า)",
+  seller: "ผู้ขาย (ร้านค้า)",
+};
+
+const CONTRACT_PARTY_ROLE_SHORT: Record<ContractParty["role"], string> = {
+  owner: "ผู้ให้เช่าซื้อ",
+  buyer: "ผู้เช่าซื้อ",
+  seller: "ผู้ขาย",
 };
 
 const CONTRACT_PARTY_ROLE_STYLES: Record<ContractParty["role"], string> = {
@@ -99,9 +80,9 @@ function UpdateStatusPanel({
 
   async function handleSave() {
     const ok = await confirm({
-      title: "Update Contract?",
-      text: `Change status to "${status}"?`,
-      confirmText: "Update",
+      title: "อัปเดตสัญญา?",
+      text: `เปลี่ยนสถานะเป็น "${TH.contractStatus[status] ?? status}"?`,
+      confirmText: "อัปเดต",
     });
     if (!ok) return;
 
@@ -111,10 +92,10 @@ function UpdateStatusPanel({
         method: "PATCH",
         body: JSON.stringify({ status, notes: notes.trim() || undefined }),
       });
-      toastSuccess("Contract updated");
+      toastSuccess("อัปเดตสัญญาแล้ว");
       onUpdated(res.data);
     } catch (err) {
-      alertError(err instanceof Error ? err.message : "Failed to update contract");
+      alertError(err instanceof Error ? err.message : "ไม่สามารถอัปเดตสัญญาได้");
     } finally {
       setSaving(false);
     }
@@ -123,7 +104,7 @@ function UpdateStatusPanel({
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
+        <label className="block text-xs font-medium text-gray-700 mb-1">สถานะ</label>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
@@ -135,13 +116,13 @@ function UpdateStatusPanel({
         </select>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+        <label className="block text-xs font-medium text-gray-700 mb-1">หมายเหตุ</label>
         <textarea
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-          placeholder="Optional notes…"
+          placeholder="หมายเหตุเพิ่มเติม (ไม่บังคับ)…"
         />
       </div>
       <button
@@ -150,7 +131,7 @@ function UpdateStatusPanel({
         disabled={saving}
         className="w-full px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
       >
-        {saving ? "Saving…" : "Save Changes"}
+        {saving ? "กำลังบันทึก…" : "บันทึกการเปลี่ยนแปลง"}
       </button>
     </div>
   );
@@ -178,7 +159,7 @@ export default function ContractDetailPage() {
         const res = await apiFetch<{ data: ContractDetail }>(`/contracts/${params.id}`);
         setContract(res.data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load contract");
+        setError(err instanceof Error ? err.message : "ไม่สามารถโหลดข้อมูลสัญญาได้");
       } finally {
         setLoading(false);
       }
@@ -205,10 +186,10 @@ export default function ContractDetailPage() {
       <DashboardLayout>
         <div className="px-8 py-8">
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error ?? "Contract not found."}
+            {error ?? "ไม่พบสัญญา"}
           </div>
           <Link href="/contracts" className="mt-4 inline-block text-sm text-primary-600 hover:underline">
-            ← Back to Contracts
+            ← กลับไปหน้าสัญญา
           </Link>
         </div>
       </DashboardLayout>
@@ -231,7 +212,7 @@ export default function ContractDetailPage() {
       <div className="px-8 py-8 max-w-5xl">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
-          <Link href="/contracts" className="hover:text-gray-700">Contracts</Link>
+          <Link href="/contracts" className="hover:text-gray-700">สัญญาเช่าซื้อ</Link>
           <span>/</span>
           <span className="font-mono text-gray-700">{contract.contractNumber}</span>
         </div>
@@ -248,11 +229,11 @@ export default function ContractDetailPage() {
                   CONTRACT_STATUS_STYLES[contract.status] ?? "bg-gray-100 text-gray-500"
                 }`}
               >
-                {contract.status}
+                {TH.contractStatus[contract.status] ?? contract.status}
               </span>
             </div>
             <p className="text-sm text-gray-500">
-              Customer: <span className="font-medium text-gray-700">{contract.customer.name}</span>
+              ลูกค้า: <span className="font-medium text-gray-700">{contract.customer.name}</span>
               {" · "}
               {contract.customer.phone}
             </p>
@@ -274,7 +255,7 @@ export default function ContractDetailPage() {
               onClick={() => setShowActions((v) => !v)}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
-              {showActions ? "Hide Actions" : "Actions"}
+              {showActions ? "ซ่อนเมนูจัดการ" : "จัดการสัญญา"}
             </button>
           </div>
         </div>
@@ -285,24 +266,24 @@ export default function ContractDetailPage() {
             {/* Contract Summary */}
             <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
               <div className="px-5 py-4">
-                <h2 className="text-sm font-semibold text-gray-900">Contract Summary</h2>
+                <h2 className="text-sm font-semibold text-gray-900">สรุปสัญญา</h2>
               </div>
               <div className="px-5 py-4 divide-y divide-gray-50">
-                <InfoRow label="Principal" value={formatPrice(contract.totalPrincipal)} />
-                <InfoRow label="Interest Rate" value={`${contract.interestRate}% / yr`} />
-                <InfoRow label="Total Interest" value={formatPrice(contract.totalInterest)} />
+                <InfoRow label="เงินต้น" value={formatPrice(contract.totalPrincipal)} />
+                <InfoRow label="อัตราดอกเบี้ย" value={`${contract.interestRate}% ต่อปี`} />
+                <InfoRow label="ดอกเบี้ยรวม" value={formatPrice(contract.totalInterest)} />
                 <InfoRow
-                  label="Total Amount"
+                  label="ยอดรวมทั้งหมด"
                   value={
                     <span className="font-semibold text-gray-900">
                       {formatPrice(contract.totalAmount)}
                     </span>
                   }
                 />
-                <InfoRow label="# Installments" value={`${contract.numInstallments} months`} />
-                <InfoRow label="Start Date" value={formatDate(contract.startDate)} />
+                <InfoRow label="จำนวนงวด" value={`${contract.numInstallments} งวด`} />
+                <InfoRow label="วันที่เริ่มสัญญา" value={formatDate(contract.startDate)} />
                 <InfoRow
-                  label="Total Paid"
+                  label="ชำระแล้วรวม"
                   value={
                     <span className={totalPaid >= contract.totalAmount ? "text-green-700" : ""}>
                       {formatPrice(totalPaid)}
@@ -310,12 +291,12 @@ export default function ContractDetailPage() {
                   }
                 />
                 <InfoRow
-                  label="Remaining"
+                  label="คงเหลือ"
                   value={formatPrice(Math.max(0, contract.totalAmount - totalPaid))}
                 />
-                {contract.notes && <InfoRow label="Notes" value={contract.notes} />}
+                {contract.notes && <InfoRow label="หมายเหตุ" value={contract.notes} />}
                 <InfoRow
-                  label="Created by"
+                  label="สร้างโดย"
                   value={contract.createdBy?.name ?? "—"}
                 />
               </div>
@@ -326,7 +307,7 @@ export default function ContractDetailPage() {
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100">
                   <h2 className="text-sm font-semibold text-gray-900">
-                    Contract Parties ({contractParties.length})
+                    คู่สัญญา ({contractParties.length})
                   </h2>
                 </div>
                 <div className="divide-y divide-gray-50">
@@ -343,7 +324,7 @@ export default function ContractDetailPage() {
                           CONTRACT_PARTY_ROLE_STYLES[party.role] ?? "bg-gray-100 text-gray-500"
                         }`}
                       >
-                        {party.role}
+                        {CONTRACT_PARTY_ROLE_SHORT[party.role] ?? party.role}
                       </span>
                     </div>
                   ))}
@@ -356,16 +337,16 @@ export default function ContractDetailPage() {
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100">
                   <h2 className="text-sm font-semibold text-gray-900">
-                    Linked Sales ({contract.contractSales.length})
+                    รายการขายที่เชื่อมโยง ({contract.contractSales.length})
                   </h2>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50">
-                        <th className="text-left px-5 py-3 font-medium text-gray-500">Date</th>
-                        <th className="text-left px-5 py-3 font-medium text-gray-500">Motorcycle</th>
-                        <th className="text-right px-5 py-3 font-medium text-gray-500">Finance Amount</th>
+                        <th className="text-left px-5 py-3 font-medium text-gray-500">วันที่</th>
+                        <th className="text-left px-5 py-3 font-medium text-gray-500">รถจักรยานยนต์</th>
+                        <th className="text-right px-5 py-3 font-medium text-gray-500">ยอดจัดไฟแนนซ์</th>
                         <th className="px-5 py-3" />
                       </tr>
                     </thead>
@@ -388,7 +369,7 @@ export default function ContractDetailPage() {
                               href={`/sales/${cs.sale.id}`}
                               className="text-primary-600 hover:text-primary-700 text-xs font-medium"
                             >
-                              View
+                              ดูรายละเอียด
                             </Link>
                           </td>
                         </tr>
@@ -403,15 +384,15 @@ export default function ContractDetailPage() {
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-900">
-                  Installment Schedule
+                  ตารางผ่อนชำระ
                 </h2>
                 <span className="text-xs text-gray-500">
-                  {paidInstallments} / {contract.installments.length} paid
+                  ชำระแล้ว {paidInstallments} / {contract.installments.length} งวด
                 </span>
               </div>
               {contract.installments.length === 0 ? (
                 <div className="px-5 py-8 text-center text-sm text-gray-400">
-                  No installments generated yet.
+                  ยังไม่มีการสร้างงวดผ่อนชำระ
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -419,20 +400,20 @@ export default function ContractDetailPage() {
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50">
                         <th className="text-center px-4 py-3 font-medium text-gray-500">#</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-500">Due Date</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500">กำหนดชำระ</th>
                         {hasAmortizationData && (
                           <>
-                            <th className="text-right px-4 py-3 font-medium text-gray-500">Principal</th>
-                            <th className="text-right px-4 py-3 font-medium text-gray-500">Interest</th>
+                            <th className="text-right px-4 py-3 font-medium text-gray-500">เงินต้น</th>
+                            <th className="text-right px-4 py-3 font-medium text-gray-500">ดอกเบี้ย</th>
                           </>
                         )}
-                        <th className="text-right px-4 py-3 font-medium text-gray-500">Amount Due</th>
+                        <th className="text-right px-4 py-3 font-medium text-gray-500">ยอดที่ต้องชำระ</th>
                         {hasAmortizationData && (
-                          <th className="text-right px-4 py-3 font-medium text-gray-500">Balance</th>
+                          <th className="text-right px-4 py-3 font-medium text-gray-500">คงเหลือ</th>
                         )}
-                        <th className="text-right px-4 py-3 font-medium text-gray-500">Paid</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-500">Payments & Invoices</th>
-                        <th className="text-center px-4 py-3 font-medium text-gray-500">Status</th>
+                        <th className="text-right px-4 py-3 font-medium text-gray-500">ชำระแล้ว</th>
+                        <th className="text-left px-4 py-3 font-medium text-gray-500">การชำระเงินและใบกำกับ</th>
+                        <th className="text-center px-4 py-3 font-medium text-gray-500">สถานะ</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -487,12 +468,12 @@ export default function ContractDetailPage() {
                                     <div key={p.id} className="border-b border-dashed border-gray-100 pb-1 last:border-0 last:pb-0">
                                       <div className="flex justify-between font-medium text-gray-800">
                                         <span>{formatPrice(p.amount)}</span>
-                                        <span className="text-[10px] uppercase text-gray-400">{p.paymentChannel}</span>
+                                        <span className="text-[10px] uppercase text-gray-400">{TH.paymentChannel[p.paymentChannel] ?? p.paymentChannel}</span>
                                       </div>
                                       <div className="flex justify-between text-[10px] text-gray-400">
                                         <span>{formatDate(p.paymentDate)}</span>
                                         <span className={p.verified ? "text-green-600 font-semibold" : "text-amber-500 font-semibold"}>
-                                          {p.verified ? "Verified" : "Pending"}
+                                          {p.verified ? "ตรวจสอบแล้ว" : "รอตรวจสอบ"}
                                         </span>
                                       </div>
                                       {/* Tax Invoices linked to this payment */}
@@ -508,7 +489,7 @@ export default function ContractDetailPage() {
                                               e.stopPropagation();
                                             }}
                                           >
-                                            Print
+                                            พิมพ์
                                           </a>
                                         </div>
                                       ))}
@@ -527,7 +508,7 @@ export default function ContractDetailPage() {
                                     INSTALLMENT_STATUS_STYLES[inst.status] ?? "bg-gray-100 text-gray-500"
                                   }`}
                                 >
-                                  {INSTALLMENT_STATUS_LABELS[inst.status] ?? inst.status}
+                                  {TH.installmentStatus[inst.status] ?? inst.status}
                                 </span>
                                 {inst.status === "partially_paid" && (
                                   <span className="text-[10px] text-orange-600 mt-1 font-semibold">
@@ -549,22 +530,22 @@ export default function ContractDetailPage() {
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100">
                 <h2 className="text-sm font-semibold text-gray-900">
-                  Payment History ({contract.payments.length})
+                  ประวัติการชำระเงิน ({contract.payments.length})
                 </h2>
               </div>
               {contract.payments.length === 0 ? (
                 <div className="px-5 py-8 text-center text-sm text-gray-400">
-                  No payments recorded yet.
+                  ยังไม่มีการบันทึกการชำระเงิน
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50">
-                        <th className="text-left px-5 py-3 font-medium text-gray-500">Date</th>
-                        <th className="text-right px-5 py-3 font-medium text-gray-500">Amount</th>
-                        <th className="text-left px-5 py-3 font-medium text-gray-500">Channel</th>
-                        <th className="text-center px-5 py-3 font-medium text-gray-500">Verified</th>
+                        <th className="text-left px-5 py-3 font-medium text-gray-500">วันที่</th>
+                        <th className="text-right px-5 py-3 font-medium text-gray-500">จำนวนเงิน</th>
+                        <th className="text-left px-5 py-3 font-medium text-gray-500">ช่องทาง</th>
+                        <th className="text-center px-5 py-3 font-medium text-gray-500">การตรวจสอบ</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -575,16 +556,16 @@ export default function ContractDetailPage() {
                             {formatPrice(payment.amount)}
                           </td>
                           <td className="px-5 py-3 text-gray-600 capitalize">
-                            {payment.paymentChannel.replace("_", " ")}
+                            {TH.paymentChannel[payment.paymentChannel] ?? payment.paymentChannel.replace("_", " ")}
                           </td>
                           <td className="px-5 py-3 text-center">
                             {payment.verified ? (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
-                                Verified
+                                ตรวจสอบแล้ว
                               </span>
                             ) : (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-                                Pending
+                                รอตรวจสอบ
                               </span>
                             )}
                           </td>
@@ -601,7 +582,7 @@ export default function ContractDetailPage() {
           <div className="space-y-6">
             {/* Customer Card */}
             <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
-              <h2 className="text-sm font-semibold text-gray-900 mb-3">Customer</h2>
+              <h2 className="text-sm font-semibold text-gray-900 mb-3">ลูกค้า</h2>
               <p className="text-sm font-medium text-gray-900">{contract.customer.name}</p>
               <p className="text-xs text-gray-500 mt-0.5">{contract.customer.phone}</p>
               {contract.customer.idCardNumber && (
@@ -611,18 +592,18 @@ export default function ContractDetailPage() {
                 href={`/customers/${contract.customer.id}`}
                 className="mt-3 block text-xs text-primary-600 hover:text-primary-700"
               >
-                View customer profile →
+                ดูโปรไฟล์ลูกค้า →
               </Link>
             </div>
 
             {/* Progress */}
             <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
-              <h2 className="text-sm font-semibold text-gray-900 mb-3">Payment Progress</h2>
+              <h2 className="text-sm font-semibold text-gray-900 mb-3">ความคืบหน้าการชำระ</h2>
               {contract.installments.length > 0 ? (
                 <>
                   <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-                    <span>{paidInstallments} paid</span>
-                    <span>{contract.installments.length - paidInstallments} remaining</span>
+                    <span>ชำระแล้ว {paidInstallments} งวด</span>
+                    <span>คงเหลือ {contract.installments.length - paidInstallments} งวด</span>
                   </div>
                   <div className="w-full bg-gray-100 rounded-full h-2">
                     <div
@@ -633,18 +614,18 @@ export default function ContractDetailPage() {
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1.5 text-right">
-                    {Math.round((paidInstallments / contract.installments.length) * 100)}% complete
+                    ชำระแล้ว {Math.round((paidInstallments / contract.installments.length) * 100)}%
                   </p>
                 </>
               ) : (
-                <p className="text-xs text-gray-400">No installments yet.</p>
+                <p className="text-xs text-gray-400">ยังไม่มีงวดผ่อนชำระ</p>
               )}
             </div>
 
             {/* Actions */}
             {showActions && (
               <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
-                <h2 className="text-sm font-semibold text-gray-900 mb-3">Update Contract</h2>
+                <h2 className="text-sm font-semibold text-gray-900 mb-3">อัปเดตสัญญา</h2>
                 <UpdateStatusPanel
                   contractId={contract.id}
                   currentStatus={contract.status}

@@ -44,6 +44,7 @@ interface AddCustomerFormProps {
 function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
   const [form, setForm] = useState<NewCustomerForm>(INITIAL_FORM);
   const [errors, setErrors] = useState<Partial<NewCustomerForm>>({});
+  const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -54,12 +55,12 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
 
   function validate(): boolean {
     const newErrors: Partial<NewCustomerForm> = {};
-    if (!form.name.trim()) newErrors.name = "Name is required";
-    if (!form.phone.trim()) newErrors.phone = "Phone number is required";
+    if (!form.name.trim()) newErrors.name = "กรุณากรอกชื่อ";
+    if (!form.phone.trim()) newErrors.phone = "กรุณากรอกเบอร์โทรศัพท์";
     if (!form.id_card_number.trim()) {
-      newErrors.id_card_number = "ID card number is required";
+      newErrors.id_card_number = "กรุณากรอกเลขบัตรประชาชน";
     } else if (form.id_card_number.replace(/\D/g, "").length !== 13) {
-      newErrors.id_card_number = "ID card number must be 13 digits";
+      newErrors.id_card_number = "เลขบัตรประชาชนต้องมี 13 หลัก";
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -71,10 +72,11 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const body: Record<string, string> = {
+      const body: Record<string, string | boolean> = {
         name: form.name.trim(),
         phone: form.phone.trim(),
         id_card_number: form.id_card_number.trim(),
+        consent_accepted: consent,
       };
       if (form.email.trim()) body.email = form.email.trim();
       if (form.line_id.trim()) body.line_id = form.line_id.trim();
@@ -84,10 +86,10 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
         method: "POST",
         body: JSON.stringify(body),
       });
-      toastSuccess("Customer added successfully");
+      toastSuccess("เพิ่มลูกค้าสำเร็จ");
       onSuccess(res.data);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to add customer";
+      const msg = err instanceof Error ? err.message : "ไม่สามารถเพิ่มลูกค้าได้";
       setSubmitError(msg);
       alertError(msg);
     } finally {
@@ -97,6 +99,23 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <label className="flex items-start gap-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3">
+        <input
+          type="checkbox"
+          checked={consent}
+          onChange={(e) => setConsent(e.target.checked)}
+          className="mt-0.5 rounded border-gray-300"
+        />
+        <span>
+          ลูกค้ายินยอมให้เก็บและใช้ข้อมูลส่วนบุคคลเพื่อการซื้อขาย สัญญาเช่าซื้อ
+          และการแจ้งเตือนการชำระเงิน ตาม{" "}
+          <a href="/privacy-policy" target="_blank" className="text-primary-600 underline">
+            นโยบายความเป็นส่วนตัว
+          </a>{" "}
+          (PDPA)
+        </span>
+      </label>
+
       {submitError && (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {submitError}
@@ -105,21 +124,21 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Full Name <span className="text-red-500">*</span>
+          ชื่อ-นามสกุล <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
           value={form.name}
           onChange={(e) => set("name", e.target.value)}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          placeholder="Somchai Jaidee"
+          placeholder="สมชาย ใจดี"
         />
         <FieldError message={errors.name} />
       </div>
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Phone <span className="text-red-500">*</span>
+          เบอร์โทรศัพท์ <span className="text-red-500">*</span>
         </label>
         <input
           type="tel"
@@ -133,7 +152,7 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          ID Card Number <span className="text-red-500">*</span>
+          เลขบัตรประชาชน <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
@@ -148,7 +167,7 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">อีเมล</label>
           <input
             type="email"
             value={form.email}
@@ -170,13 +189,13 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">ที่อยู่</label>
         <textarea
           rows={2}
           value={form.address}
           onChange={(e) => set("address", e.target.value)}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-          placeholder="123 Moo 4, Tambon…"
+          placeholder="123 หมู่ 4 ตำบล…"
         />
       </div>
 
@@ -186,14 +205,14 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
           disabled={submitting}
           className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
-          {submitting ? "Adding…" : "Add Customer"}
+          {submitting ? "กำลังเพิ่ม…" : "เพิ่มลูกค้า"}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
-          Cancel
+          ยกเลิก
         </button>
       </div>
     </form>
@@ -230,7 +249,7 @@ export default function CustomersPage() {
         setTotal(res.total);
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Failed to load customers"
+          err instanceof Error ? err.message : "ไม่สามารถโหลดข้อมูลลูกค้าได้"
         );
       } finally {
         setLoading(false);
@@ -261,16 +280,16 @@ export default function CustomersPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
+            <h1 className="text-2xl font-bold text-gray-900">ลูกค้า</h1>
             <p className="text-sm text-gray-500 mt-1">
-              {total} customer{total !== 1 ? "s" : ""} total
+              ทั้งหมด {total} ราย
             </p>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
           >
-            <span>+</span> Add Customer
+            <span>+</span> เพิ่มลูกค้า
           </button>
         </div>
 
@@ -278,7 +297,7 @@ export default function CustomersPage() {
         <div className="mb-6">
           <input
             type="text"
-            placeholder="Search by name, phone, or ID card…"
+            placeholder="ค้นหาด้วยชื่อ เบอร์โทร หรือเลขบัตรประชาชน…"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
             className="w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -297,10 +316,10 @@ export default function CustomersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Phone</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">ID Card</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Email</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">ชื่อ</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">เบอร์โทร</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">เลขบัตรประชาชน</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">อีเมล</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
@@ -321,12 +340,12 @@ export default function CustomersPage() {
                       colSpan={5}
                       className="px-5 py-12 text-center text-sm text-gray-400"
                     >
-                      No customers found.{" "}
+                      ไม่พบลูกค้า{" "}
                       <button
                         onClick={() => setShowAddModal(true)}
                         className="text-primary-600 hover:underline"
                       >
-                        Add one?
+                        เพิ่มลูกค้าใหม่?
                       </button>
                     </td>
                   </tr>
@@ -353,7 +372,7 @@ export default function CustomersPage() {
                           href={`/customers/${customer.id}`}
                           className="text-primary-600 hover:text-primary-700 text-xs font-medium"
                         >
-                          View
+                          ดูรายละเอียด
                         </Link>
                       </td>
                     </tr>
@@ -367,7 +386,7 @@ export default function CustomersPage() {
           {!loading && totalPages > 1 && (
             <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50">
               <span className="text-xs text-gray-500">
-                Page {page} of {totalPages}
+                หน้า {page} จาก {totalPages}
               </span>
               <div className="flex gap-2">
                 <button
@@ -375,14 +394,14 @@ export default function CustomersPage() {
                   onClick={() => setPage((p) => p - 1)}
                   className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
                 >
-                  Previous
+                  ก่อนหน้า
                 </button>
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                   className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
                 >
-                  Next
+                  ถัดไป
                 </button>
               </div>
             </div>
@@ -394,7 +413,7 @@ export default function CustomersPage() {
       <FormModal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
-        title="Add Customer"
+        title="เพิ่มลูกค้า"
       >
         <AddCustomerForm
           onSuccess={handleAddSuccess}

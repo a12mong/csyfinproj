@@ -5,25 +5,10 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
-import { toastSuccess, alertError } from "@/lib/swal";
+import { confirm as swalConfirm, toastSuccess, alertError } from "@/lib/swal";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatPrice, formatDate, TH } from "@/lib/format";
 import type { CustomerWithDebtSummary, Sale, PaginatedResponse } from "@csyfinproj/shared";
-
-function formatPrice(n: number) {
-  return new Intl.NumberFormat("th-TH", {
-    style: "currency",
-    currency: "THB",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 const SALE_STATUS_STYLES: Record<string, string> = {
   active: "bg-blue-50 text-blue-700",
@@ -32,15 +17,27 @@ const SALE_STATUS_STYLES: Record<string, string> = {
   cancelled: "bg-gray-100 text-gray-500",
 };
 
-const SALE_STATUS_LABELS: Record<string, string> = {
-  active: "Active",
-  completed: "Completed",
-  defaulted: "Defaulted",
-  cancelled: "Cancelled",
-};
-
 export default function CustomerDetailPage() {
+  const { user: authUser } = useAuth();
   const params = useParams<{ id: string }>();
+
+  async function handleAnonymize() {
+    const ok = await swalConfirm({
+      title: "ปกปิดข้อมูลลูกค้า (PDPA)?",
+      text: "ชื่อ เบอร์โทร เลขบัตร และข้อมูลติดต่อจะถูกลบถาวร (ยอดการเงินคงอยู่) — ระบบจะปฏิเสธหากยังอยู่ในช่วงเก็บข้อมูลตามนโยบาย",
+      confirmText: "ยืนยันปกปิดข้อมูล",
+      cancelText: "ยกเลิก",
+      icon: "warning",
+    });
+    if (!ok) return;
+    try {
+      await apiFetch(`/customers/${params.id}/anonymize`, { method: "POST" });
+      toastSuccess("ปกปิดข้อมูลลูกค้าแล้ว");
+      window.location.reload();
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : "ไม่สามารถปกปิดข้อมูลได้");
+    }
+  }
   const [customer, setCustomer] = useState<CustomerWithDebtSummary | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +45,26 @@ export default function CustomerDetailPage() {
   const [unlinking, setUnlinking] = useState(false);
   const [sendingGreeting, setSendingGreeting] = useState(false);
   const [windowOrigin, setWindowOrigin] = useState("http://localhost:3000");
+  const [linkCode, setLinkCode] = useState<{
+    code: string;
+    expires_at: string;
+    oa_basic_id: string | null;
+  } | null>(null);
+  const [generatingCode, setGeneratingCode] = useState(false);
+
+  async function generateLinkCode() {
+    setGeneratingCode(true);
+    try {
+      const res = await apiFetch<{
+        data: { code: string; expires_at: string; oa_basic_id: string | null };
+      }>(`/customers/${params.id}/line-link-code`, { method: "POST" });
+      setLinkCode(res.data);
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : "ไม่สามารถสร้างรหัสเชื่อมต่อได้");
+    } finally {
+      setGeneratingCode(false);
+    }
+  }
 
   useEffect(() => {
     async function fetchData() {
@@ -61,7 +78,7 @@ export default function CustomerDetailPage() {
         setCustomer(customerRes.data);
         setSales(salesRes.data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load customer");
+        setError(err instanceof Error ? err.message : "ไม่สามารถโหลดข้อมูลลูกค้าได้");
       } finally {
         setLoading(false);
       }
@@ -75,10 +92,24 @@ export default function CustomerDetailPage() {
     }
   }, []);
 
+  // Auto-generate a link code when viewing an unlinked customer
+  useEffect(() => {
+    if (customer && !customer.isLineLinked && !linkCode && !generatingCode) {
+      generateLinkCode();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.isLineLinked]);
+
   useEffect(() => {
     let pollInterval: NodeJS.Timeout;
+    let attempts = 0;
     if (customer && !customer.isLineLinked) {
       pollInterval = setInterval(async () => {
+        // Stop polling after ~5 minutes; staff can refresh the page to resume
+        if (++attempts > 100) {
+          clearInterval(pollInterval);
+          return;
+        }
         try {
           const res = await apiFetch<{ isLineLinked: boolean; lineId: string | null; linePictureUrl: string | null }>(
             `/customers/${params.id}/link-status`
@@ -106,7 +137,7 @@ export default function CustomerDetailPage() {
   }, [customer?.isLineLinked, params.id]);
 
   async function handleUnlink() {
-    if (!confirm("Are you sure you want to disconnect this customer's LINE account?")) {
+    if (!confirm("ต้องการยกเลิกการเชื่อมต่อบัญชี LINE ของลูกค้ารายนี้ใช่หรือไม่?")) {
       return;
     }
     setUnlinking(true);
@@ -123,7 +154,7 @@ export default function CustomerDetailPage() {
           : null
       );
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to disconnect LINE account");
+      alert(err instanceof Error ? err.message : "ไม่สามารถยกเลิกการเชื่อมต่อบัญชี LINE ได้");
     } finally {
       setUnlinking(false);
     }
@@ -164,13 +195,13 @@ export default function CustomerDetailPage() {
       <DashboardLayout>
         <div className="px-8 py-8">
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error ?? "Customer not found."}
+            {error ?? "ไม่พบลูกค้า"}
           </div>
           <Link
             href="/customers"
             className="mt-4 inline-block text-sm text-primary-600 hover:underline"
           >
-            ← Back to customers
+            ← กลับไปหน้าลูกค้า
           </Link>
         </div>
       </DashboardLayout>
@@ -183,7 +214,7 @@ export default function CustomerDetailPage() {
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
           <Link href="/customers" className="hover:text-gray-700">
-            Customers
+            ลูกค้า
           </Link>
           <span>/</span>
           <span className="text-gray-900 font-medium">{customer.name}</span>
@@ -199,28 +230,28 @@ export default function CustomerDetailPage() {
             href={`/sales?open=new&customer_id=${customer.id}`}
             className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
           >
-            + New Sale
+            + สร้างรายการขาย
           </Link>
         </div>
 
         {/* Debt Summary Cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">Total Debt</p>
+            <p className="text-xs text-gray-500 mb-1">ยอดหนี้รวม</p>
             <p className="text-xl font-bold text-gray-900">
               {formatPrice(customer.totalDebt)}
             </p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">Paid Amount</p>
+            <p className="text-xs text-gray-500 mb-1">ยอดที่ชำระแล้ว</p>
             <p className="text-xl font-bold text-green-600">
               {formatPrice(customer.paidAmount)}
             </p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-500 mb-1">Overdue</p>
+            <p className="text-xs text-gray-500 mb-1">เกินกำหนด</p>
             <p className={`text-xl font-bold ${customer.overdueCount > 0 ? "text-red-600" : "text-gray-900"}`}>
-              {customer.overdueCount} payment{customer.overdueCount !== 1 ? "s" : ""}
+              {customer.overdueCount} งวด
             </p>
           </div>
         </div>
@@ -228,12 +259,12 @@ export default function CustomerDetailPage() {
         {/* Customer Info */}
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 mb-6">
           {[
-            { label: "Full Name", value: customer.name },
-            { label: "Phone", value: customer.phone },
-            { label: "ID Card Number", value: <span className="font-mono text-xs">{customer.idCardNumber}</span> },
-            { label: "Email", value: customer.email ?? "—" },
+            { label: "ชื่อ-นามสกุล", value: customer.name },
+            { label: "เบอร์โทรศัพท์", value: customer.phone },
+            { label: "เลขบัตรประชาชน", value: <span className="font-mono text-xs">{customer.idCardNumber}</span> },
+            { label: "อีเมล", value: customer.email ?? "—" },
             { label: "LINE ID", value: customer.lineId ?? "—" },
-            { label: "Address", value: customer.address ?? "—" },
+            { label: "ที่อยู่", value: customer.address ?? "—" },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between px-6 py-4">
               <span className="text-sm text-gray-500">{label}</span>
@@ -246,7 +277,7 @@ export default function CustomerDetailPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6 animate-fadeIn">
           <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#06C755] text-white text-[10px] font-black">LINE</span>
-            LINE Account Integration
+            การเชื่อมต่อบัญชี LINE
           </h2>
           
           {customer.isLineLinked ? (
@@ -266,13 +297,13 @@ export default function CustomerDetailPage() {
               )}
               <div className="flex-1 space-y-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-800">Connected</span>
+                  <span className="text-sm font-semibold text-gray-800">เชื่อมต่อแล้ว</span>
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 animate-pulse">
-                    Active
+                    ใช้งานอยู่
                   </span>
                 </div>
                 <p className="text-xs text-gray-500">
-                  This customer's record is successfully linked to their LINE account.
+                  บัญชีลูกค้ารายนี้เชื่อมต่อกับบัญชี LINE เรียบร้อยแล้ว
                 </p>
                 <div className="mt-2 font-mono text-xs text-gray-600 bg-gray-50 rounded-lg p-2 max-w-md truncate flex justify-between items-center border border-gray-100">
                   <span className="truncate flex-1">LINE ID: {customer.lineId}</span>
@@ -281,7 +312,7 @@ export default function CustomerDetailPage() {
                     disabled={unlinking}
                     className="text-red-600 hover:text-red-700 font-semibold text-xs ml-4 shrink-0 transition-colors"
                   >
-                    {unlinking ? "Disconnecting..." : "Disconnect"}
+                    {unlinking ? "กำลังยกเลิกการเชื่อมต่อ..." : "ยกเลิกการเชื่อมต่อ"}
                   </button>
                 </div>
                 <div className="pt-2">
@@ -290,7 +321,7 @@ export default function CustomerDetailPage() {
                     disabled={sendingGreeting}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#06C755] hover:bg-[#05b04b] text-white text-xs font-bold rounded-lg transition-all shadow-sm disabled:opacity-50"
                   >
-                    💬 {sendingGreeting ? "กำลังส่ง..." : "ส่งข้อความทักทาย (Greeting)"}
+                    💬 {sendingGreeting ? "กำลังส่ง..." : "ส่งข้อความทักทาย"}
                   </button>
                 </div>
               </div>
@@ -299,37 +330,88 @@ export default function CustomerDetailPage() {
             <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
               <div className="flex-1 space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-800">Not Connected</span>
+                  <span className="text-sm font-semibold text-gray-800">ยังไม่เชื่อมต่อ</span>
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
-                    Pending Setup
+                    รอเชื่อมต่อ
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  Link this customer's LINE account to allow them to receive payment notifications, installment reminders, and automatically upload payment slips via our LINE Official Account.
-                </p>
-                <div className="pt-2">
-                  <p className="text-xs font-medium text-gray-600 mb-1">Testing URL (Click to simulate):</p>
+
+                {linkCode?.oa_basic_id ? (
+                  <>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      วิธีเชื่อมต่อ (ไม่ต้อง Login LINE):
+                    </p>
+                    <ol className="text-xs text-gray-600 leading-relaxed list-decimal pl-4 space-y-1">
+                      <li>ให้ลูกค้าสแกน QR ด้วยกล้องมือถือหรือแอปใดก็ได้</li>
+                      <li>ระบบจะเปิด LINE ไปที่แชท OA ของร้าน พร้อมข้อความรหัสพิมพ์ไว้ให้แล้ว
+                        (ถ้ายังไม่ได้เป็นเพื่อน LINE จะให้กด Add Friend ก่อน)</li>
+                      <li>ลูกค้ากด <b>ส่ง</b> — ระบบเชื่อมต่อให้อัตโนมัติทันที</li>
+                    </ol>
+                    <div className="flex items-center gap-3 pt-1">
+                      <div className="font-mono text-lg font-bold tracking-[0.3em] bg-gray-900 text-white rounded-lg px-4 py-2">
+                        {linkCode.code}
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        <p>รหัสหมดอายุ {formatDate(linkCode.expires_at)}</p>
+                        <button
+                          onClick={generateLinkCode}
+                          disabled={generatingCode}
+                          className="text-primary-600 hover:underline font-medium disabled:opacity-50"
+                        >
+                          {generatingCode ? "กำลังสร้าง…" : "สร้างรหัสใหม่"}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-gray-400">
+                      หากสแกนไม่ได้: ให้ลูกค้า Add Friend LINE OA ({linkCode.oa_basic_id}) แล้วพิมพ์{" "}
+                      <span className="font-mono">LINK {linkCode.code}</span> ส่งเข้ามาในแชท
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                      เชื่อมต่อบัญชี LINE ของลูกค้าเพื่อให้ลูกค้ารับการแจ้งเตือนการชำระเงิน
+                      การแจ้งเตือนค่างวด และส่งสลิปการชำระเงินอัตโนมัติผ่าน LINE Official Account
+                      ของร้านได้
+                    </p>
+                    {linkCode && !linkCode.oa_basic_id && (
+                      <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                        ⚠ ยังไม่ได้ตั้งค่า <span className="font-mono">LINE_OA_BASIC_ID</span> ใน
+                        API .env — ระบบจึงใช้วิธีเชื่อมต่อแบบ LINE Login (LIFF) ชั่วคราว
+                      </p>
+                    )}
+                  </>
+                )}
+
+                <div className="pt-1">
+                  <p className="text-[11px] font-medium text-gray-400 mb-1">
+                    วิธีสำรอง — LINE Login (LIFF):
+                  </p>
                   <a
                     href={`/customers/link-line/${customer.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-block text-xs font-medium text-primary-600 hover:underline break-all bg-primary-50 p-2 rounded-lg transition-all"
+                    className="inline-block text-[11px] font-medium text-primary-600 hover:underline break-all bg-primary-50 px-2 py-1 rounded-lg transition-all"
                   >
                     {`${windowOrigin}/customers/link-line/${customer.id}`}
                   </a>
                 </div>
               </div>
-              
+
               <div className="shrink-0 flex flex-col items-center p-3 border border-gray-100 bg-gray-50/50 rounded-xl text-center space-y-2">
                 <img
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                    `${windowOrigin}/customers/link-line/${customer.id}`
+                    linkCode?.oa_basic_id
+                      ? `https://line.me/R/oaMessage/${encodeURIComponent(linkCode.oa_basic_id)}/?${encodeURIComponent(`LINK ${linkCode.code}`)}`
+                      : `${windowOrigin}/customers/link-line/${customer.id}`
                   )}`}
                   alt="LINE Link QR Code"
                   className="w-[150px] h-[150px] bg-white rounded-lg shadow-sm border border-gray-100"
                 />
                 <p className="text-[10px] text-gray-400 font-medium max-w-[150px]">
-                  Scan to link LINE account
+                  {linkCode?.oa_basic_id
+                    ? "สแกนด้วยกล้อง → เปิด LINE → กดส่ง"
+                    : "สแกนเพื่อเชื่อมต่อบัญชี LINE"}
                 </p>
               </div>
             </div>
@@ -339,7 +421,7 @@ export default function CustomerDetailPage() {
         {/* Sales History */}
         <div>
           <h2 className="text-base font-semibold text-gray-900 mb-3">
-            Sales History
+            ประวัติการซื้อ
             <span className="ml-2 text-sm font-normal text-gray-400">
               ({sales.length})
             </span>
@@ -347,12 +429,12 @@ export default function CustomerDetailPage() {
 
           {sales.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 px-5 py-10 text-center text-sm text-gray-400">
-              No sales yet.{" "}
+              ยังไม่มีรายการขาย{" "}
               <Link
                 href={`/sales?open=new&customer_id=${customer.id}`}
                 className="text-primary-600 hover:underline"
               >
-                Create one?
+                สร้างรายการใหม่?
               </Link>
             </div>
           ) : (
@@ -361,16 +443,16 @@ export default function CustomerDetailPage() {
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="text-left px-5 py-3 font-medium text-gray-500">
-                      Date
+                      วันที่
                     </th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">
-                      Method
+                      วิธีชำระ
                     </th>
                     <th className="text-right px-5 py-3 font-medium text-gray-500">
-                      Total
+                      ยอดรวม
                     </th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">
-                      Status
+                      สถานะ
                     </th>
                     <th className="px-5 py-3" />
                   </tr>
@@ -385,7 +467,7 @@ export default function CustomerDetailPage() {
                         {formatDate(sale.saleDate)}
                       </td>
                       <td className="px-5 py-3 text-gray-600 capitalize">
-                        {sale.paymentMethod}
+                        {TH.paymentMethod[sale.paymentMethod] ?? sale.paymentMethod}
                       </td>
                       <td className="px-5 py-3 text-right font-medium text-gray-900">
                         {formatPrice(sale.totalPrice)}
@@ -396,7 +478,7 @@ export default function CustomerDetailPage() {
                             SALE_STATUS_STYLES[sale.status] ?? "bg-gray-100 text-gray-500"
                           }`}
                         >
-                          {SALE_STATUS_LABELS[sale.status] ?? sale.status}
+                          {TH.saleStatus[sale.status] ?? sale.status}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
@@ -404,7 +486,7 @@ export default function CustomerDetailPage() {
                           href={`/sales/${sale.id}`}
                           className="text-primary-600 hover:text-primary-700 text-xs font-medium"
                         >
-                          View
+                          ดูรายละเอียด
                         </Link>
                       </td>
                     </tr>
@@ -415,13 +497,21 @@ export default function CustomerDetailPage() {
           )}
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 flex items-center justify-between">
           <Link
             href="/customers"
             className="text-sm text-gray-500 hover:text-gray-700"
           >
-            ← Back to customers
+            ← กลับไปหน้าลูกค้า
           </Link>
+          {authUser?.role === "admin" && (
+            <button
+              onClick={handleAnonymize}
+              className="text-xs text-red-500 hover:text-red-700 hover:underline"
+            >
+              ปกปิดข้อมูลลูกค้า (PDPA)
+            </button>
+          )}
         </div>
       </div>
     </DashboardLayout>

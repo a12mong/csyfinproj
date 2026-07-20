@@ -6,23 +6,15 @@ import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import StatusBadge from "@/components/StatusBadge";
 import { apiFetch } from "@/lib/api";
+import { formatPrice, TH } from "@/lib/format";
 import type { Motorcycle } from "@csyfinproj/shared";
-
-function formatPrice(n: number) {
-  return new Intl.NumberFormat("th-TH", {
-    style: "currency",
-    currency: "THB",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
 
 type MotorcycleStatus = Motorcycle["status"];
 
 const STATUS_OPTIONS: { value: MotorcycleStatus; label: string }[] = [
-  { value: "in_stock", label: "In Stock" },
-  { value: "reserved", label: "Reserved" },
-  { value: "sold", label: "Sold" },
+  { value: "in_stock", label: TH.motorcycleStatus.in_stock },
+  { value: "reserved", label: TH.motorcycleStatus.reserved },
+  { value: "sold", label: TH.motorcycleStatus.sold },
 ];
 
 interface EditForm {
@@ -63,7 +55,7 @@ export default function MotorcycleDetailPage() {
         });
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Failed to load motorcycle"
+          err instanceof Error ? err.message : "โหลดข้อมูลรถไม่สำเร็จ"
         );
       } finally {
         setLoading(false);
@@ -79,7 +71,7 @@ export default function MotorcycleDetailPage() {
 
     const sellingPrice = parseFloat(form.selling_price);
     if (isNaN(sellingPrice) || sellingPrice <= 0) {
-      setSaveError("Selling price must be a positive number");
+      setSaveError("ราคาขายต้องเป็นจำนวนบวก");
       setSaving(false);
       return;
     }
@@ -100,7 +92,7 @@ export default function MotorcycleDetailPage() {
       setMoto(res.data);
       setEditing(false);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaveError(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     } finally {
       setSaving(false);
     }
@@ -126,13 +118,13 @@ export default function MotorcycleDetailPage() {
       <DashboardLayout>
         <div className="px-8 py-8">
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error ?? "Motorcycle not found."}
+            {error ?? "ไม่พบข้อมูลรถ"}
           </div>
           <Link
             href="/inventory"
             className="mt-4 inline-block text-sm text-primary-600 hover:underline"
           >
-            ← Back to inventory
+            ← กลับไปหน้าคลังสินค้า
           </Link>
         </div>
       </DashboardLayout>
@@ -145,7 +137,7 @@ export default function MotorcycleDetailPage() {
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
           <Link href="/inventory" className="hover:text-gray-700">
-            Inventory
+            คลังสินค้า
           </Link>
           <span>/</span>
           <span className="text-gray-900 font-medium">
@@ -169,7 +161,7 @@ export default function MotorcycleDetailPage() {
               onClick={() => setEditing(true)}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
-              Edit
+              แก้ไข
             </button>
           )}
         </div>
@@ -181,7 +173,7 @@ export default function MotorcycleDetailPage() {
             className="bg-white rounded-xl border border-gray-200 p-6 space-y-5"
           >
             <h2 className="text-sm font-semibold text-gray-700">
-              Edit Motorcycle
+              แก้ไขข้อมูลรถ
             </h2>
 
             {saveError && (
@@ -192,7 +184,7 @@ export default function MotorcycleDetailPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Model
+                รุ่น
               </label>
               <input
                 type="text"
@@ -205,7 +197,7 @@ export default function MotorcycleDetailPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Color
+                สี
               </label>
               <input
                 type="text"
@@ -218,7 +210,7 @@ export default function MotorcycleDetailPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Selling Price (THB)
+                ราคาขาย (บาท)
               </label>
               <input
                 type="number"
@@ -235,7 +227,7 @@ export default function MotorcycleDetailPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Status
+                สถานะ
               </label>
               <select
                 value={form.status}
@@ -261,7 +253,7 @@ export default function MotorcycleDetailPage() {
                 disabled={saving}
                 className="px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
-                {saving ? "Saving…" : "Save changes"}
+                {saving ? "กำลังบันทึก…" : "บันทึก"}
               </button>
               <button
                 type="button"
@@ -277,7 +269,7 @@ export default function MotorcycleDetailPage() {
                 }}
                 className="px-5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                Cancel
+                ยกเลิก
               </button>
             </div>
           </form>
@@ -285,18 +277,19 @@ export default function MotorcycleDetailPage() {
           /* Detail view */
           <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
             {[
-              { label: "Brand", value: moto.brand },
-              { label: "Model", value: moto.model },
-              { label: "Year", value: moto.year },
-              { label: "Color", value: moto.color },
-              { label: "Chassis Number", value: moto.chassisNumber },
-              { label: "Engine Number", value: moto.engineNumber },
+              { label: "ยี่ห้อ", value: moto.brand },
+              { label: "รุ่น", value: moto.model },
+              { label: "ปี", value: moto.year },
+              { label: "สี", value: moto.color },
+              { label: "เลขตัวถัง", value: moto.chassisNumber },
+              { label: "เลขเครื่องยนต์", value: moto.engineNumber },
               {
-                label: "Cost Price",
-                value: formatPrice(moto.costPrice),
+                label: "ราคาทุน",
+                value:
+                  moto.costPrice != null ? formatPrice(moto.costPrice) : "ไม่มีสิทธิ์ดู",
               },
               {
-                label: "Selling Price",
+                label: "ราคาขาย",
                 value: (
                   <span className="font-semibold text-gray-900">
                     {formatPrice(moto.sellingPrice)}
@@ -304,7 +297,7 @@ export default function MotorcycleDetailPage() {
                 ),
               },
               {
-                label: "Status",
+                label: "สถานะ",
                 value: <StatusBadge status={moto.status} />,
               },
             ].map(({ label, value }) => (
@@ -324,7 +317,7 @@ export default function MotorcycleDetailPage() {
             href="/inventory"
             className="text-sm text-gray-500 hover:text-gray-700"
           >
-            ← Back to inventory
+            ← กลับไปหน้าคลังสินค้า
           </Link>
         </div>
       </div>

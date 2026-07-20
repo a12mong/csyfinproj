@@ -6,6 +6,7 @@ import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
 import { confirm, toastSuccess, alertError } from "@/lib/swal";
+import { useAuth } from "@/contexts/AuthContext";
 import type {
   Installment,
   Payment,
@@ -41,22 +42,7 @@ interface InstallmentWithRefs extends Installment {
 }
 type VerifiedFilter = "all" | "pending" | "verified";
 
-function formatPrice(n: number) {
-  return new Intl.NumberFormat("th-TH", {
-    style: "currency",
-    currency: "THB",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+import { formatPrice, formatDate, TH } from "@/lib/format";
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -77,6 +63,8 @@ interface PaymentWithInstallment extends Payment {
 }
 
 function PaymentsContent() {
+  const { hasAction } = useAuth();
+  const canApprove = hasAction("payments", "approve_payment");
   const searchParams = useSearchParams();
   const preselectedInstallmentId = searchParams.get("installmentId") ?? "";
 
@@ -130,16 +118,17 @@ function PaymentsContent() {
 
   // --- Payments Ledger ---
   const [payments, setPayments] = useState<PaymentWithInstallment[]>([]);
+  const [ledgerDate, setLedgerDate] = useState(new Date().toISOString().slice(0, 10));
   const [filterVerified, setFilterVerified] = useState<VerifiedFilter>("pending");
   const [verifyLoading, setVerifyLoading] = useState(true);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
-  // Load pending/overdue installments for dropdown (installment reference mode)
+  // Load open (unpaid/partial) installments for dropdown (installment reference mode)
   const fetchInstallments = useCallback(async () => {
     try {
-      const res = await apiFetch<PaginatedResponse<Installment>>(
-        `/installments?status=pending`
+      const res = await apiFetch<PaginatedResponse<InstallmentWithRefs>>(
+        `/installments?open=true&limit=100`
       );
       setInstallments(res.data);
     } catch {
@@ -147,32 +136,39 @@ function PaymentsContent() {
     }
   }, []);
 
-  // Load payments based on filter
-  const fetchPayments = useCallback(async (statusFilter: VerifiedFilter) => {
-    setVerifyLoading(true);
-    setVerifyError(null);
-    try {
-      const params = new URLSearchParams();
-      if (statusFilter === "pending") params.set("verified", "false");
-      if (statusFilter === "verified") params.set("verified", "true");
-      
-      const res = await apiFetch<PaginatedResponse<PaymentWithInstallment>>(
-        `/payments?${params.toString()}`
-      );
-      setPayments(res.data);
-    } catch (err) {
-      setVerifyError(
-        err instanceof Error ? err.message : "Failed to load payments"
-      );
-    } finally {
-      setVerifyLoading(false);
-    }
-  }, []);
+  // Load payments based on filter + date
+  const fetchPayments = useCallback(
+    async (statusFilter: VerifiedFilter, date: string) => {
+      setVerifyLoading(true);
+      setVerifyError(null);
+      try {
+        const params = new URLSearchParams();
+        if (statusFilter === "pending") params.set("verified", "false");
+        if (statusFilter === "verified") params.set("verified", "true");
+        if (date) params.set("date", date);
+
+        const res = await apiFetch<PaginatedResponse<PaymentWithInstallment>>(
+          `/payments?${params.toString()}`
+        );
+        setPayments(res.data);
+      } catch (err) {
+        setVerifyError(
+          err instanceof Error ? err.message : "Failed to load payments"
+        );
+      } finally {
+        setVerifyLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     fetchInstallments();
-    fetchPayments(filterVerified);
-  }, [fetchInstallments, fetchPayments, filterVerified]);
+  }, [fetchInstallments]);
+
+  useEffect(() => {
+    fetchPayments(filterVerified, ledgerDate);
+  }, [fetchPayments, filterVerified, ledgerDate]);
 
   // Debounced customer search (walk-in flow)
   useEffect(() => {
@@ -211,7 +207,7 @@ function PaymentsContent() {
     setCustInstallmentId("");
     try {
       const res = await apiFetch<PaginatedResponse<Installment>>(
-        `/installments?contract_id=${contractId}&status=pending&limit=100`
+        `/installments?contract_id=${contractId}&open=true&limit=100`
       );
       setCustInstallments(res.data);
       const oldest = res.data[0];
@@ -276,7 +272,7 @@ function PaymentsContent() {
       setFoundContract(contract);
       if (contract) {
         const instRes = await apiFetch<PaginatedResponse<Installment>>(
-          `/installments?contract_id=${contract.id}&status=pending`
+          `/installments?contract_id=${contract.id}&open=true`
         );
         const openInsts = instRes.data;
         setContractInstallments(openInsts);
@@ -303,13 +299,13 @@ function PaymentsContent() {
       setSaleContract(contract);
       if (contract) {
         const instRes = await apiFetch<PaginatedResponse<Installment>>(
-          `/installments?contract_id=${contract.id}&status=pending`
+          `/installments?contract_id=${contract.id}&open=true`
         );
         const openInsts = instRes.data;
         setSaleContractInstallments(openInsts);
         setSaleInstallmentId(openInsts[0]?.id ?? "");
       } else {
-        alertError("No contract found for this Sale ID.");
+        alertError("ไม่พบสัญญาของรหัสการขายนี้");
       }
     } catch (err) {
       alertError(err instanceof Error ? err.message : "Sale search failed");
@@ -418,10 +414,10 @@ function PaymentsContent() {
         throw new Error(err.error || res.statusText);
       }
 
-      toastSuccess("Payment recorded successfully");
-      setSubmitSuccess("Payment recorded successfully.");
+      toastSuccess("บันทึกการรับชำระเรียบร้อยแล้ว");
+      setSubmitSuccess("บันทึกการรับชำระเรียบร้อยแล้ว");
       resetForm();
-      fetchPayments(filterVerified);
+      fetchPayments(filterVerified, ledgerDate);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to record payment";
       alertError(msg);
@@ -433,11 +429,11 @@ function PaymentsContent() {
 
   async function handleVerify(paymentId: string, verified: boolean) {
     const confirmed = await confirm({
-      title: verified ? "Approve Payment?" : "Reject Payment?",
+      title: verified ? "อนุมัติการชำระ?" : "ปฏิเสธการชำระ?",
       text: verified
-        ? "This will mark the payment as verified and auto-generate tax invoice(s)."
-        : "This will reject the payment slip.",
-      confirmText: verified ? "Yes, approve" : "Yes, reject",
+        ? "ระบบจะยืนยันการชำระและออกใบกำกับภาษีอัตโนมัติ"
+        : "ระบบจะปฏิเสธสลิปการชำระนี้",
+      confirmText: verified ? "อนุมัติ" : "ปฏิเสธ",
       icon: verified ? "question" : "warning",
     });
     if (!confirmed) return;
@@ -448,8 +444,8 @@ function PaymentsContent() {
         method: "PATCH",
         body: JSON.stringify({ verified }),
       });
-      toastSuccess(verified ? "Payment approved and invoiced" : "Payment rejected");
-      fetchPayments(filterVerified);
+      toastSuccess(verified ? "อนุมัติและออกใบกำกับภาษีแล้ว" : "ปฏิเสธการชำระแล้ว");
+      fetchPayments(filterVerified, ledgerDate);
     } catch (err) {
       const msg = err instanceof Error ? err.message : `Failed to ${verified ? "approve" : "reject"} payment`;
       alertError(msg);
@@ -465,9 +461,9 @@ function PaymentsContent() {
     <div className="px-8 py-8 space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Repayment Ledger &amp; Verification</h1>
+        <h1 className="text-2xl font-bold text-gray-900">รับชำระค่างวดและตรวจสอบสลิป</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Record customer payments, verify bank slips, and issue legal tax invoices.
+          บันทึกการรับชำระ ตรวจสอบสลิปโอนเงิน และออกใบกำกับภาษี
         </p>
       </div>
 
@@ -476,7 +472,7 @@ function PaymentsContent() {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm self-start">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
             <h2 className="text-base font-semibold text-gray-900">
-              Record Repayment
+              บันทึกการรับชำระ
             </h2>
           </div>
 
@@ -484,7 +480,7 @@ function PaymentsContent() {
             {/* Reference Type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reference Mode <span className="text-red-500">*</span>
+                วิธีค้นหารายการ <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
                 {(["customer", "installment", "contract", "sale"] as ReferenceType[]).map((t) => (
@@ -501,10 +497,10 @@ function PaymentsContent() {
                     {t === "customer"
                       ? "ลูกค้า"
                       : t === "installment"
-                      ? "Installment"
+                      ? "งวดชำระ"
                       : t === "contract"
-                      ? "Contract"
-                      : "Sale / PO"}
+                      ? "เลขสัญญา"
+                      : "รหัสการขาย"}
                   </button>
                 ))}
               </div>
@@ -632,7 +628,34 @@ function PaymentsContent() {
                           สัญญานี้ไม่มีงวดค้างชำระแล้ว 🎉
                         </div>
                       ) : (
-                        <div>
+                        <div className="space-y-2">
+                          {(() => {
+                            const carried = custInstallments.filter(
+                              (i) =>
+                                i.status === "partially_paid" ||
+                                new Date(i.dueDate) < new Date()
+                            );
+                            if (carried.length === 0) return null;
+                            const carriedTotal = carried.reduce(
+                              (s, i) => s + (i.amountDue - i.amountPaid),
+                              0
+                            );
+                            return (
+                              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                ⚠ ลูกค้ามียอดค้างจากงวดก่อนหน้า{" "}
+                                <strong>{formatPrice(carriedTotal)}</strong> (
+                                {carried
+                                  .map(
+                                    (i) =>
+                                      `งวดที่ ${i.installmentNumber}${
+                                        i.status === "partially_paid" ? " ชำระบางส่วน" : ""
+                                      } ค้าง ${formatPrice(i.amountDue - i.amountPaid)}`
+                                  )
+                                  .join(" · ")}
+                                ) — เลือกได้ว่าจะตัดยอดงวดค้างก่อน หรือตัดงวดปัจจุบัน
+                              </div>
+                            );
+                          })()}
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             งวดที่ชำระ (เลือกงวดค้างเก่าสุดให้อัตโนมัติ)
                           </label>
@@ -654,6 +677,7 @@ function PaymentsContent() {
                                 งวดที่ {inst.installmentNumber} — ครบกำหนด{" "}
                                 {formatDate(inst.dueDate)} — ค้าง{" "}
                                 {formatPrice(inst.amountDue - inst.amountPaid)}
+                                {inst.status === "partially_paid" ? " · ชำระบางส่วนแล้ว" : ""}
                                 {new Date(inst.dueDate) < new Date() ? " ⚠ เกินกำหนด" : ""}
                               </option>
                             ))}
@@ -669,7 +693,7 @@ function PaymentsContent() {
             {refType === "installment" && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Installment <span className="text-red-500">*</span>
+                  งวดชำระ <span className="text-red-500">*</span>
                 </label>
                 {installments.length > 0 ? (
                   <select
@@ -677,7 +701,7 @@ function PaymentsContent() {
                     onChange={(e) => setInstallmentId(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
                   >
-                    <option value="">Select installment…</option>
+                    <option value="">เลือกงวด…</option>
                     {installments.map((inst) => {
                       const payerName =
                         inst.contract?.customer?.name ?? inst.sale?.customer?.name;
@@ -686,9 +710,9 @@ function PaymentsContent() {
                         <option key={inst.id} value={inst.id}>
                           {payerName ? `${payerName} — ` : ""}
                           {contractNo ? `${contractNo} — ` : ""}
-                          #{inst.installmentNumber} — Due {formatDate(inst.dueDate)} —{" "}
-                          {formatPrice(inst.amountDue - inst.amountPaid)} remaining
-                          {inst.status === "overdue" ? " ⚠ overdue" : ""}
+                          งวดที่ {inst.installmentNumber} — ครบกำหนด {formatDate(inst.dueDate)} — ค้าง{" "}
+                          {formatPrice(inst.amountDue - inst.amountPaid)}
+                          {inst.status === "overdue" ? " ⚠ เกินกำหนด" : ""}
                         </option>
                       );
                     })}
@@ -696,7 +720,7 @@ function PaymentsContent() {
                 ) : (
                   <input
                     type="text"
-                    placeholder="Enter installment ID"
+                    placeholder="ใส่รหัสงวด"
                     value={installmentId}
                     onChange={(e) => setInstallmentId(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -704,19 +728,19 @@ function PaymentsContent() {
                 )}
                 {selectedInstallment && (
                   <p className="mt-1.5 text-xs text-gray-500">
-                    Balance:{" "}
+                    ยอดค้าง:{" "}
                     <span className="font-medium text-red-600">
                       {formatPrice(
                         selectedInstallment.amountDue - selectedInstallment.amountPaid
                       )}
                     </span>{" "}
-                    &middot; Status:{" "}
+                    &middot; สถานะ:{" "}
                     <span
                       className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
                         STATUS_STYLES[selectedInstallment.status] ?? "bg-gray-100 text-gray-500"
                       }`}
                     >
-                      {selectedInstallment.status}
+                      {TH.installmentStatus[selectedInstallment.status] ?? selectedInstallment.status}
                     </span>
                   </p>
                 )}
@@ -728,7 +752,7 @@ function PaymentsContent() {
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contract Number <span className="text-red-500">*</span>
+                    เลขที่สัญญา <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -745,7 +769,7 @@ function PaymentsContent() {
                       disabled={contractSearchLoading}
                       className="px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-50 transition-colors"
                     >
-                      {contractSearchLoading ? "…" : "Search"}
+                      {contractSearchLoading ? "…" : "ค้นหา"}
                     </button>
                   </div>
                 </div>
@@ -753,15 +777,15 @@ function PaymentsContent() {
                 {foundContract && (
                   <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
                     <span className="font-semibold">{foundContract.contractNumber}</span>
-                    {" · "}Total: {formatPrice(foundContract.totalAmount)}
-                    {" · "}Status: {foundContract.status}
+                    {" · "}ยอดรวม {formatPrice(foundContract.totalAmount)}
+                    {" · "}สถานะ {TH.contractStatus[foundContract.status] ?? foundContract.status}
                   </div>
                 )}
 
                 {contractInstallments.length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Installment (oldest unpaid pre-selected)
+                      งวดที่ชำระ (เลือกงวดค้างเก่าสุดให้อัตโนมัติ)
                     </label>
                     <select
                       value={contractInstallmentId}
@@ -770,9 +794,9 @@ function PaymentsContent() {
                     >
                       {contractInstallments.map((inst) => (
                         <option key={inst.id} value={inst.id}>
-                          #{inst.installmentNumber} — Due {formatDate(inst.dueDate)} —{" "}
-                          {formatPrice(inst.amountDue - inst.amountPaid)} remaining
-                          {inst.status === "overdue" ? " ⚠ overdue" : ""}
+                          งวดที่ {inst.installmentNumber} — ครบกำหนด {formatDate(inst.dueDate)} — ค้าง{" "}
+                          {formatPrice(inst.amountDue - inst.amountPaid)}
+                          {inst.status === "overdue" ? " ⚠ เกินกำหนด" : ""}
                         </option>
                       ))}
                     </select>
@@ -786,12 +810,12 @@ function PaymentsContent() {
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Sale ID / PO Reference <span className="text-red-500">*</span>
+                    รหัสการขาย <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="Paste sale UUID…"
+                      placeholder="วางรหัสการขาย…"
                       value={saleSearch}
                       onChange={(e) => setSaleSearch(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSaleSearch())}
@@ -803,21 +827,21 @@ function PaymentsContent() {
                       disabled={saleSearchLoading}
                       className="px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 disabled:opacity-50 transition-colors"
                     >
-                      {saleSearchLoading ? "…" : "Resolve"}
+                      {saleSearchLoading ? "…" : "ค้นหา"}
                     </button>
                   </div>
                 </div>
 
                 {saleContract && (
                   <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                    Contract: <span className="font-semibold">{saleContract.contractNumber}</span>
+                    สัญญา: <span className="font-semibold">{saleContract.contractNumber}</span>
                   </div>
                 )}
 
                 {saleContractInstallments.length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Installment (oldest unpaid pre-selected)
+                      งวดที่ชำระ (เลือกงวดค้างเก่าสุดให้อัตโนมัติ)
                     </label>
                     <select
                       value={saleInstallmentId}
@@ -826,8 +850,8 @@ function PaymentsContent() {
                     >
                       {saleContractInstallments.map((inst) => (
                         <option key={inst.id} value={inst.id}>
-                          #{inst.installmentNumber} — Due {formatDate(inst.dueDate)} —{" "}
-                          {formatPrice(inst.amountDue - inst.amountPaid)} remaining
+                          งวดที่ {inst.installmentNumber} — ครบกำหนด {formatDate(inst.dueDate)} — ค้าง{" "}
+                          {formatPrice(inst.amountDue - inst.amountPaid)}
                         </option>
                       ))}
                     </select>
@@ -839,7 +863,7 @@ function PaymentsContent() {
             {/* Amount */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Amount (THB) <span className="text-red-500">*</span>
+                จำนวนเงิน (บาท) <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
@@ -855,7 +879,7 @@ function PaymentsContent() {
             {/* Payment Date */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Payment Date <span className="text-red-500">*</span>
+                วันที่ชำระ <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
@@ -868,23 +892,23 @@ function PaymentsContent() {
             {/* Payment Channel */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Payment Channel
+                ช่องทางชำระ
               </label>
               <select
                 value={paymentChannel}
                 onChange={(e) => setPaymentChannel(e.target.value as "cash" | "bank_transfer" | "line")}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
               >
-                <option value="cash">Cash</option>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="line">LINE Chat Slip</option>
+                <option value="cash">เงินสด</option>
+                <option value="bank_transfer">โอนธนาคาร</option>
+                <option value="line">สลิปจากแชท LINE</option>
               </select>
             </div>
 
             {/* Slip Upload */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Slip Image{paymentChannel === "bank_transfer" ? <span className="text-red-500"> *</span> : " (optional)"}
+                รูปสลิป{paymentChannel === "bank_transfer" ? <span className="text-red-500"> *</span> : " (ไม่บังคับ)"}
               </label>
               <input
                 ref={fileInputRef}
@@ -895,7 +919,7 @@ function PaymentsContent() {
               />
               {slipPreview && (
                 <div className="mt-3">
-                  <p className="text-xs text-gray-500 mb-1">Preview:</p>
+                  <p className="text-xs text-gray-500 mb-1">ตัวอย่าง:</p>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={slipPreview}
@@ -909,11 +933,11 @@ function PaymentsContent() {
             {/* Notes */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes
+                หมายเหตุ
               </label>
               <textarea
                 rows={2}
-                placeholder="Internal verification notes…"
+                placeholder="บันทึกภายใน…"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
@@ -968,7 +992,7 @@ function PaymentsContent() {
               disabled={submitting}
               className="w-full py-2.5 px-4 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm"
             >
-              {submitting ? "Recording…" : "Record Repayment"}
+              {submitting ? "กำลังบันทึก…" : "บันทึกการรับชำระ"}
             </button>
           </form>
         </div>
@@ -977,16 +1001,24 @@ function PaymentsContent() {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm flex flex-col">
           {/* Header & Filter Tabs */}
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-gray-900">
-                Repayment Ledger
+                รายการรับชำระ
               </h2>
-              <button
-                onClick={() => fetchPayments(filterVerified)}
-                className="text-xs text-primary-600 hover:text-primary-700 font-medium"
-              >
-                Refresh
-              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={ledgerDate}
+                  onChange={(e) => setLedgerDate(e.target.value)}
+                  className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:border-primary-500 focus:outline-none"
+                />
+                <button
+                  onClick={() => fetchPayments(filterVerified, ledgerDate)}
+                  className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  รีเฟรช
+                </button>
+              </div>
             </div>
             
             {/* Tabs */}
@@ -1002,7 +1034,7 @@ function PaymentsContent() {
                       : "text-gray-500 hover:text-gray-900"
                   }`}
                 >
-                  {tab === "all" ? "All Receipts" : tab === "pending" ? "Pending Slip" : "Verified"}
+                  {tab === "all" ? "ทั้งหมด" : tab === "pending" ? "รอตรวจสอบ" : "ตรวจสอบแล้ว"}
                 </button>
               ))}
             </div>
@@ -1025,7 +1057,7 @@ function PaymentsContent() {
               ))
             ) : payments.length === 0 ? (
               <div className="px-5 py-12 text-center text-sm text-gray-400">
-                No payments found matching this filter.
+                ไม่มีรายการรับชำระตามเงื่อนไข
               </div>
             ) : (
               payments.map((payment) => {
@@ -1048,25 +1080,25 @@ function PaymentsContent() {
                                 : "bg-amber-50 text-amber-700 border border-amber-200 animate-pulse"
                             }`}
                           >
-                            {payment.verified ? "Verified" : "Pending Approval"}
+                            {payment.verified ? "ตรวจสอบแล้ว" : "รออนุมัติ"}
                           </span>
                         </div>
                         
                         <p className="text-xs text-gray-500">
-                          Date: <strong>{formatDate(payment.paymentDate)}</strong> &middot; Channel: <span className="capitalize">{payment.paymentChannel.replace("_", " ")}</span>
+                          วันที่ <strong>{formatDate(payment.paymentDate)}</strong> &middot; ช่องทาง {TH.paymentChannel[payment.paymentChannel] ?? payment.paymentChannel}
                         </p>
                         {customerName && (
                           <p className="text-xs text-gray-600">
-                            Payer: <strong>{customerName}</strong>
+                            ผู้ชำระ <strong>{customerName}</strong>
                           </p>
                         )}
                         {payment.contract?.contractNumber && (
                           <p className="text-xs text-blue-600 font-mono">
-                            Contract: <Link href={`/contracts/${payment.contractId}`} className="hover:underline font-semibold">{payment.contract.contractNumber}</Link>
+                            สัญญา <Link href={`/contracts/${payment.contractId}`} className="hover:underline font-semibold">{payment.contract.contractNumber}</Link>
                           </p>
                         )}
                         {payment.notes && (
-                          <p className="text-xs text-gray-400 italic">Notes: {payment.notes}</p>
+                          <p className="text-xs text-gray-400 italic">หมายเหตุ: {payment.notes}</p>
                         )}
 
                         {payment.slipImageUrl && (
@@ -1090,7 +1122,7 @@ function PaymentsContent() {
                         {/* Tax Invoices Print Section */}
                         {payment.verified && payment.taxInvoices && payment.taxInvoices.length > 0 && (
                           <div className="mt-3 pt-2 border-t border-dashed border-gray-100 space-y-1">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Generated Tax Invoices:</p>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">ใบกำกับภาษีที่ออกแล้ว:</p>
                             <div className="flex flex-wrap gap-1.5">
                               {payment.taxInvoices.map((inv) => (
                                 <div key={inv.id} className="inline-flex items-center gap-2 bg-gray-50 border border-gray-200 rounded px-2.5 py-0.5 text-xs">
@@ -1101,7 +1133,7 @@ function PaymentsContent() {
                                     }}
                                     className="text-primary-600 hover:text-primary-700 font-bold border-l border-gray-300 pl-2 text-[10px]"
                                   >
-                                    Print
+                                    พิมพ์
                                   </button>
                                 </div>
                               ))}
@@ -1111,21 +1143,21 @@ function PaymentsContent() {
                       </div>
 
                       {/* Verify controls for pending payments */}
-                      {!payment.verified && (
+                      {!payment.verified && canApprove && (
                         <div className="flex gap-2 shrink-0 self-start">
                           <button
                             onClick={() => handleVerify(payment.id, true)}
                             disabled={verifyingId === payment.id}
                             className="px-3 py-1.5 text-xs font-semibold rounded-md bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 transition-colors border border-green-200 shadow-sm"
                           >
-                            Approve
+                            อนุมัติ
                           </button>
                           <button
                             onClick={() => handleVerify(payment.id, false)}
                             disabled={verifyingId === payment.id}
                             className="px-3 py-1.5 text-xs font-semibold rounded-md bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors border border-red-200 shadow-sm"
                           >
-                            Reject
+                            ปฏิเสธ
                           </button>
                         </div>
                       )}

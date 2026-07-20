@@ -14,18 +14,18 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: "/", label: "Dashboard", exact: true, page: "dashboard" },
-  { href: "/inventory", label: "Inventory", exact: false, page: "inventory" },
-  { href: "/receiving", label: "Receiving", exact: false, page: "receiving" },
-  { href: "/sales", label: "Sales", exact: false, page: "sales" },
-  { href: "/customers", label: "Customers", exact: false, page: "customers" },
-  { href: "/contracts", label: "Contracts", exact: false, page: "contracts" },
-  { href: "/finance", label: "Finance", exact: false, page: "finance" },
-  { href: "/payments", label: "Payments", exact: false, page: "payments" },
+  { href: "/", label: "แดชบอร์ด", exact: true, page: "dashboard" },
+  { href: "/inventory", label: "คลังสินค้า", exact: false, page: "inventory" },
+  { href: "/receiving", label: "รับสินค้า", exact: false, page: "receiving" },
+  { href: "/sales", label: "การขาย", exact: false, page: "sales" },
+  { href: "/customers", label: "ลูกค้า", exact: false, page: "customers" },
+  { href: "/contracts", label: "สัญญา", exact: false, page: "contracts" },
+  { href: "/finance", label: "การเงิน", exact: false, page: "finance" },
+  { href: "/payments", label: "รับชำระ", exact: false, page: "payments" },
 ];
 
 const adminNavItems: NavItem[] = [
-  { href: "/settings", label: "Settings", exact: false, page: "settings" },
+  { href: "/settings", label: "ตั้งค่า", exact: false, page: "settings" },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -84,7 +84,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <>
                 <div className="pt-3 pb-1">
                   <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Admin
+                    ผู้ดูแลระบบ
                   </p>
                 </div>
                 {visibleAdminItems.map((item) => {
@@ -117,7 +117,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               onClick={handleLogout}
               className="w-full text-left px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
             >
-              Sign out
+              ออกจากระบบ
             </button>
           </div>
         </aside>

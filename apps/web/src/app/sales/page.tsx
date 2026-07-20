@@ -7,6 +7,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import FormModal from "@/components/FormModal";
 import { apiFetch } from "@/lib/api";
 import { confirm, toastSuccess, alertError } from "@/lib/swal";
+import { formatPrice, formatDate, TH } from "@/lib/format";
 import type {
   Customer,
   Motorcycle,
@@ -18,11 +19,11 @@ import type {
 } from "@csyfinproj/shared";
 
 const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
-  { value: "active", label: "Active" },
-  { value: "completed", label: "Completed" },
-  { value: "defaulted", label: "Defaulted" },
-  { value: "cancelled", label: "Cancelled" },
+  { value: "", label: "ทุกสถานะ" },
+  { value: "active", label: TH.saleStatus.active },
+  { value: "completed", label: TH.saleStatus.completed },
+  { value: "defaulted", label: TH.saleStatus.defaulted },
+  { value: "cancelled", label: TH.saleStatus.cancelled },
 ];
 
 const SALE_STATUS_STYLES: Record<string, string> = {
@@ -34,29 +35,12 @@ const SALE_STATUS_STYLES: Record<string, string> = {
 
 const PAGE_SIZE = 20;
 
-function formatPrice(n: number) {
-  return new Intl.NumberFormat("th-TH", {
-    style: "currency",
-    currency: "THB",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 // ─── Customer type badge ──────────────────────────────────────────────────────
 
 const CUSTOMER_TYPE_BADGE: Record<string, { label: string; className: string }> = {
-  personal: { label: "Personal", className: "bg-blue-50 text-blue-700" },
-  individual: { label: "Individual", className: "bg-green-50 text-green-700" },
-  finance: { label: "Finance", className: "bg-amber-50 text-amber-700" },
+  personal: { label: TH.customerType.personal, className: "bg-blue-50 text-blue-700" },
+  individual: { label: TH.customerType.individual, className: "bg-green-50 text-green-700" },
+  finance: { label: TH.customerType.finance, className: "bg-amber-50 text-amber-700" },
 };
 
 function CustomerTypeBadge({ type }: { type: string }) {
@@ -70,7 +54,7 @@ function CustomerTypeBadge({ type }: { type: string }) {
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
-const STEPS = ["Invoice Customer", "Motorcycle", "Pricing", "Add-ons", "Confirm"];
+const STEPS = ["ผู้รับใบกำกับ", "รถจักรยานยนต์", "ราคา", "บริการเสริม", "ยืนยัน"];
 
 function StepIndicator({ current }: { current: number }) {
   return (
@@ -144,11 +128,11 @@ function StepCustomer({
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-900 mb-0.5">Select Invoice Customer</h3>
-      <p className="text-xs text-gray-500 mb-3">The customer who will receive the invoice.</p>
+      <h3 className="text-sm font-semibold text-gray-900 mb-0.5">เลือกผู้รับใบกำกับ</h3>
+      <p className="text-xs text-gray-500 mb-3">ลูกค้าที่จะเป็นผู้รับใบกำกับ/ใบแจ้งหนี้</p>
       <input
         type="text"
-        placeholder="Search by name, phone, or ID card…"
+        placeholder="ค้นหาด้วยชื่อ เบอร์โทร หรือเลขบัตรประชาชน…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 mb-3 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -159,7 +143,7 @@ function StepCustomer({
             <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
           ))
         ) : customers.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4 text-center">No customers found.</p>
+          <p className="text-sm text-gray-400 py-4 text-center">ไม่พบลูกค้า</p>
         ) : (
           customers.map((c) => (
             <button
@@ -222,11 +206,11 @@ function StepMotorcycle({
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-900 mb-1">Select Motorcycle</h3>
-      <p className="text-xs text-gray-400 mb-3">In stock only</p>
+      <h3 className="text-sm font-semibold text-gray-900 mb-1">เลือกรถจักรยานยนต์</h3>
+      <p className="text-xs text-gray-400 mb-3">เฉพาะรถที่พร้อมขาย</p>
       <input
         type="text"
-        placeholder="Search model, chassis, color…"
+        placeholder="ค้นหารุ่น เลขตัวถัง สี…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 mb-3 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -237,7 +221,7 @@ function StepMotorcycle({
             <div key={i} className="h-14 bg-gray-100 rounded-lg animate-pulse" />
           ))
         ) : motorcycles.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4 text-center">No motorcycles in stock.</p>
+          <p className="text-sm text-gray-400 py-4 text-center">ไม่มีรถจักรยานยนต์ในสต็อก</p>
         ) : (
           motorcycles.map((m) => (
             <button
@@ -285,13 +269,6 @@ interface PricingForm {
   financial_institution_id?: string;
   finance_reference_number?: string;
 }
-
-// Display labels — includes finance_company for backward-compat display in table
-const PAYMENT_METHOD_DISPLAY: Record<string, string> = {
-  cash: "Cash",
-  installment: "Installment",
-  finance_company: "Finance Company",
-};
 
 function StepPricing({
   motorcycle,
@@ -382,12 +359,12 @@ function StepPricing({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-gray-900">Configure Pricing</h3>
+      <h3 className="text-sm font-semibold text-gray-900">กำหนดราคา</h3>
 
       {/* Payment Method */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Payment Method
+          วิธีชำระเงิน
         </label>
         <div className="flex gap-2">
           {(["cash", "installment", "finance_company"] as PaymentMethod[]).map((method) => (
@@ -412,7 +389,7 @@ function StepPricing({
                   : "border-gray-200 text-gray-600 hover:border-gray-300"
               }`}
             >
-              {PAYMENT_METHOD_DISPLAY[method]}
+              {TH.paymentMethod[method]}
             </button>
           ))}
         </div>
@@ -423,7 +400,7 @@ function StepPricing({
         <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2.5">
           <span className="text-green-600 text-sm">✓</span>
           <p className="text-sm text-green-700">
-            Cash sales are marked as <strong>completed</strong> immediately upon creation.
+            รายการขายเงินสดจะมีสถานะ <strong>เสร็จสิ้น</strong> ทันทีเมื่อสร้าง
           </p>
         </div>
       )}
@@ -433,7 +410,7 @@ function StepPricing({
         <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
           <span className="text-blue-500 text-base leading-none">ℹ</span>
           <p className="text-sm text-blue-700">
-            Installment sales create contracts with the store (CSY).
+            การขายแบบผ่อนกับร้านจะสร้างสัญญาเช่าซื้อกับทางร้าน (CSY)
           </p>
         </div>
       )}
@@ -443,7 +420,7 @@ function StepPricing({
         <div className="flex items-center gap-2 rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2.5">
           <span className="text-indigo-500 text-base leading-none">ℹ</span>
           <p className="text-sm text-indigo-700">
-            Finance Company sales invoice the financial institution on behalf of the customer.
+            การขายผ่านไฟแนนซ์จะออกใบกำกับให้บริษัทไฟแนนซ์แทนลูกค้า
           </p>
         </div>
       )}
@@ -453,15 +430,15 @@ function StepPricing({
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
           <div>
             <p className="text-sm font-medium text-amber-800">
-              Buyer Customer <span className="text-red-500">*</span>
+              ผู้เช่าซื้อ (ผู้ซื้อจริง) <span className="text-red-500">*</span>
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
-              The invoice customer is a finance company. Select the actual buyer (personal or individual).
+              ผู้รับใบกำกับเป็นบริษัทไฟแนนซ์ กรุณาเลือกผู้ซื้อจริง (บุคคลทั่วไป)
             </p>
           </div>
           <input
             type="text"
-            placeholder="Search buyer by name, phone, or ID card…"
+            placeholder="ค้นหาผู้ซื้อด้วยชื่อ เบอร์โทร หรือเลขบัตรประชาชน…"
             value={buyerSearch}
             onChange={(e) => setBuyerSearch(e.target.value)}
             className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -473,7 +450,7 @@ function StepPricing({
               ))
             ) : buyerCandidates.length === 0 ? (
               <p className="text-sm text-amber-700 py-3 text-center">
-                No personal / individual customers found.
+                ไม่พบลูกค้าบุคคลทั่วไป
               </p>
             ) : (
               buyerCandidates.map((c) => (
@@ -508,19 +485,19 @@ function StepPricing({
       {form.payment_method === "finance_company" && (
         <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3.5 space-y-3">
           <h4 className="text-xs font-semibold text-indigo-900 border-b border-indigo-100 pb-1.5 uppercase tracking-wider">
-            Finance Company Details
+            ข้อมูลบริษัทไฟแนนซ์
           </h4>
           
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Finance Company Name <span className="text-red-500">*</span>
+                ชื่อบริษัทไฟแนนซ์ <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={form.finance_company_name || ""}
                 onChange={(e) => set("finance_company_name", e.target.value)}
-                placeholder="e.g. Aeon, Krungsri Auto"
+                placeholder="เช่น Aeon, Krungsri Auto"
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
               {errors.finance_company_name && (
@@ -530,7 +507,7 @@ function StepPricing({
             
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Institution Code (Optional)
+                รหัสสถาบันการเงิน (ไม่บังคับ)
               </label>
               <select
                 value={form.financial_institution_id || ""}
@@ -545,7 +522,7 @@ function StepPricing({
                 }}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               >
-                <option value="">-- Select Code --</option>
+                <option value="">-- เลือกรหัส --</option>
                 {institutions.map((inst) => (
                   <option key={inst.id} value={inst.id}>
                     {inst.name} ({inst.code})
@@ -558,20 +535,20 @@ function StepPricing({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Finance Reference Number (Optional)
+                เลขอ้างอิงไฟแนนซ์ (ไม่บังคับ)
               </label>
               <input
                 type="text"
                 value={form.finance_reference_number || ""}
                 onChange={(e) => set("finance_reference_number", e.target.value)}
-                placeholder="Reference No."
+                placeholder="เลขอ้างอิง"
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
             </div>
             
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
-                Commission Amount (THB) (Optional)
+                ค่าคอมมิชชั่น (บาท) (ไม่บังคับ)
               </label>
               <input
                 type="number"
@@ -590,7 +567,7 @@ function StepPricing({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Total Price (THB) <span className="text-red-500">*</span>
+            ราคารวม (บาท) <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
@@ -623,7 +600,7 @@ function StepPricing({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Down Payment (THB)
+            เงินดาวน์ (บาท)
           </label>
           <input
             type="number"
@@ -681,23 +658,23 @@ function StepPricing({
       {!isCash && financeAmount > 0 && (
         <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm">
           <div className="flex justify-between text-gray-700">
-            <span>Finance amount</span>
+            <span>ยอดจัดไฟแนนซ์</span>
             <span className="font-semibold">{formatPrice(financeAmount)}</span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Installment schedule will be set when creating a contract for this sale.
+            ตารางผ่อนชำระจะถูกกำหนดเมื่อสร้างสัญญาสำหรับรายการขายนี้
           </p>
         </div>
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
         <textarea
           rows={2}
           value={form.notes}
           onChange={(e) => set("notes", e.target.value)}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-          placeholder="Optional notes…"
+          placeholder="หมายเหตุเพิ่มเติม (ไม่บังคับ)…"
         />
       </div>
     </div>
@@ -740,14 +717,14 @@ function StepAddons({
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-900 mb-0.5">Add-on Services</h3>
-      <p className="text-xs text-gray-500 mb-3">Optional. Select any add-ons to include and specify payment options.</p>
+      <h3 className="text-sm font-semibold text-gray-900 mb-0.5">บริการเสริม</h3>
+      <p className="text-xs text-gray-500 mb-3">ไม่บังคับ เลือกบริการเสริมที่ต้องการและระบุรูปแบบการจ่ายเงิน</p>
       {loading ? (
         Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse mb-2" />
         ))
       ) : addons.length === 0 ? (
-        <p className="text-sm text-gray-400 py-4 text-center">No add-ons available.</p>
+        <p className="text-sm text-gray-400 py-4 text-center">ไม่มีบริการเสริม</p>
       ) : (
         <div className="space-y-1.5 max-h-80 overflow-y-auto">
           {addons.map((addon) => {
@@ -848,18 +825,18 @@ function StepAddons({
       {selected.length > 0 && (
         <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs space-y-1.5">
           <div className="flex justify-between font-semibold text-gray-700">
-            <span>มูลค่ารวม (Add-ons total):</span>
+            <span>มูลค่ารวม:</span>
             <span className="text-sm font-bold text-gray-900">{formatPrice(totalAddonsPrice)}</span>
           </div>
           {paySeparatelyTotal > 0 && (
             <div className="flex justify-between text-gray-500">
-              <span>จ่ายแยก (Pay separately):</span>
+              <span>จ่ายแยก:</span>
               <span>{formatPrice(paySeparatelyTotal)}</span>
             </div>
           )}
           {includedInFinanceTotal > 0 && (
             <div className="flex justify-between text-gray-500">
-              <span>รวมในยอดจัด (Finance payout):</span>
+              <span>รวมในยอดจัด:</span>
               <span>{formatPrice(includedInFinanceTotal)}</span>
             </div>
           )}
@@ -899,13 +876,13 @@ function StepConfirm({
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">Confirm Sale</h3>
+      <h3 className="text-sm font-semibold text-gray-900 mb-3">ยืนยันรายการขาย</h3>
 
       {pricing.payment_method === "cash" && (
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2.5">
           <span className="text-green-600 text-sm">✓</span>
           <p className="text-sm text-green-700">
-            This cash sale will be marked as <strong>completed</strong> immediately.
+            รายการขายเงินสดนี้จะมีสถานะ <strong>เสร็จสิ้น</strong> ทันที
           </p>
         </div>
       )}
@@ -913,7 +890,7 @@ function StepConfirm({
       <div className="bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-200">
         {/* Invoice Customer */}
         <div className="px-4 py-3">
-          <p className="text-xs text-gray-500 mb-1">Invoice Customer</p>
+          <p className="text-xs text-gray-500 mb-1">ผู้รับใบกำกับ</p>
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-gray-900">{invoiceCustomer.name}</p>
             {invoiceCustomer.type && <CustomerTypeBadge type={invoiceCustomer.type} />}
@@ -924,7 +901,7 @@ function StepConfirm({
         {/* Buyer Customer (only shown when applicable) */}
         {buyerCustomer && buyerCustomer.id !== invoiceCustomer.id && (
           <div className="px-4 py-3">
-            <p className="text-xs text-gray-500 mb-1">Buyer Customer</p>
+            <p className="text-xs text-gray-500 mb-1">ผู้เช่าซื้อ</p>
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium text-gray-900">{buyerCustomer.name}</p>
               {buyerCustomer.type && <CustomerTypeBadge type={buyerCustomer.type} />}
@@ -935,7 +912,7 @@ function StepConfirm({
 
         {/* Motorcycle */}
         <div className="px-4 py-3">
-          <p className="text-xs text-gray-500 mb-0.5">Motorcycle</p>
+          <p className="text-xs text-gray-500 mb-0.5">รถจักรยานยนต์</p>
           <p className="text-sm font-medium text-gray-900">
             {motorcycle.brand} {motorcycle.model} {motorcycle.year}
           </p>
@@ -947,38 +924,38 @@ function StepConfirm({
         {/* Pricing summary */}
         <div className="px-4 py-3 space-y-1 text-sm">
           <div className="flex justify-between">
-            <span className="text-gray-500">Payment method</span>
-            <span className="font-medium">{PAYMENT_METHOD_DISPLAY[pricing.payment_method]}</span>
+            <span className="text-gray-500">วิธีชำระเงิน</span>
+            <span className="font-medium">{TH.paymentMethod[pricing.payment_method]}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Total price</span>
+            <span className="text-gray-500">ราคารวม</span>
             <span className="font-medium">{formatPrice(totalPrice)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Down payment</span>
+            <span className="text-gray-500">เงินดาวน์</span>
             <span className="font-medium">{formatPrice(downPayment)}</span>
           </div>
           {pricing.payment_method !== "cash" && totalFinanceAmount > 0 && (
             <div className="flex justify-between">
-              <span className="text-gray-500">Finance amount</span>
+              <span className="text-gray-500">ยอดจัดไฟแนนซ์</span>
               <span className="font-medium">{formatPrice(totalFinanceAmount)}</span>
             </div>
           )}
           {pricing.payment_method === "finance_company" && (
             <>
               <div className="flex justify-between">
-                <span className="text-gray-500">Finance Company</span>
+                <span className="text-gray-500">บริษัทไฟแนนซ์</span>
                 <span className="font-medium">{pricing.finance_company_name}</span>
               </div>
               {pricing.commission_amount && parseFloat(pricing.commission_amount) > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Commission</span>
+                  <span className="text-gray-500">ค่าคอมมิชชั่น</span>
                   <span className="font-medium">{formatPrice(parseFloat(pricing.commission_amount))}</span>
                 </div>
               )}
               {pricing.finance_reference_number && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Finance Ref #</span>
+                  <span className="text-gray-500">เลขอ้างอิงไฟแนนซ์</span>
                   <span className="font-medium">{pricing.finance_reference_number}</span>
                 </div>
               )}
@@ -986,13 +963,13 @@ function StepConfirm({
           )}
           {addonIds.length > 0 && (
             <div className="flex justify-between">
-              <span className="text-gray-500">Add-ons</span>
-              <span className="font-medium">{addonIds.length} selected</span>
+              <span className="text-gray-500">บริการเสริม</span>
+              <span className="font-medium">{addonIds.length} รายการ</span>
             </div>
           )}
           {pricing.notes && (
             <div className="flex justify-between">
-              <span className="text-gray-500">Notes</span>
+              <span className="text-gray-500">หมายเหตุ</span>
               <span className="font-medium text-right max-w-[60%]">{pricing.notes}</span>
             </div>
           )}
@@ -1105,20 +1082,20 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     const errors: Partial<PricingForm> = {};
     const totalPrice = parseFloat(pricing.total_price);
     if (!pricing.total_price || isNaN(totalPrice) || totalPrice <= 0) {
-      errors.total_price = "Enter a valid total price";
+      errors.total_price = "กรุณากรอกราคารวมที่ถูกต้อง";
     }
     const downPayment = parseFloat(pricing.down_payment);
     if (pricing.down_payment !== "" && (isNaN(downPayment) || downPayment < 0)) {
-      errors.down_payment = "Enter a valid down payment";
+      errors.down_payment = "กรุณากรอกเงินดาวน์ที่ถูกต้อง";
     }
 
     if (pricing.payment_method === "finance_company") {
       if (!pricing.finance_company_name?.trim()) {
-        errors.finance_company_name = "Finance company name is required";
+        errors.finance_company_name = "กรุณากรอกชื่อบริษัทไฟแนนซ์";
       }
       const commission = parseFloat(pricing.commission_amount || "0");
       if (pricing.commission_amount !== "" && (isNaN(commission) || commission < 0)) {
-        errors.commission_amount = "Enter a valid commission amount";
+        errors.commission_amount = "กรุณากรอกค่าคอมมิชชั่นที่ถูกต้อง";
       }
     }
 
@@ -1127,7 +1104,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     // Buyer customer required when invoice customer is a finance company
     const requiresBuyer = customer?.type === "finance";
     if (requiresBuyer && !buyerCustomer) {
-      setBuyerCustomerError("Select the actual buyer customer");
+      setBuyerCustomerError("กรุณาเลือกผู้ซื้อจริง");
       return false;
     }
     setBuyerCustomerError(null);
@@ -1146,16 +1123,11 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     if (step !== 5 || submitting) return;
     if (!customer || !motorcycle) return;
 
-    const methodLabel =
-      pricing.payment_method === "cash"
-        ? "เงินสด (Cash)"
-        : pricing.payment_method === "installment"
-        ? "ผ่อนกับร้าน (Installment)"
-        : "ไฟแนนซ์ (Finance Company)";
+    const methodLabel = TH.paymentMethod[pricing.payment_method] ?? pricing.payment_method;
     const confirmed = await confirm({
       title: "ยืนยันการสร้างรายการขาย?",
       text: `${customer.name} · ${motorcycle.brand} ${motorcycle.model} · ${methodLabel} · ยอดรวม ${formatPrice(parseFloat(pricing.total_price) || 0)}`,
-      confirmText: "ยืนยัน สร้างรายการขาย",
+      confirmText: "ยืนยันสร้างรายการขาย",
       cancelText: "ยกเลิก",
       icon: "question",
     });
@@ -1199,10 +1171,10 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
         method: "POST",
         body: JSON.stringify(body),
       });
-      toastSuccess("Sale created successfully");
+      toastSuccess("สร้างรายการขายสำเร็จ");
       setCreatedSale(res.data);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to create sale";
+      const msg = err instanceof Error ? err.message : "ไม่สามารถสร้างรายการขายได้";
       setSubmitError(msg);
       alertError(msg);
       setSubmitting(false);
@@ -1233,7 +1205,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
           ✓
         </div>
         <h3 className="text-lg font-bold text-gray-900 mb-1">
-          สร้างรายการขายสำเร็จ! (Sale Created Successfully)
+          สร้างรายการขายสำเร็จ!
         </h3>
         <p className="text-sm text-gray-500 mb-6">
           รายการขายนี้ได้รับการบันทึกเรียบร้อยแล้ว
@@ -1241,38 +1213,38 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
 
         <div className="bg-gray-50 rounded-xl border border-gray-200 divide-y divide-gray-200 text-left max-w-md mx-auto mb-6 text-sm">
           <div className="px-4 py-3 flex justify-between">
-            <span className="text-gray-500">รหัสการขาย (Sale ID)</span>
+            <span className="text-gray-500">รหัสอ้างอิง</span>
             <span className="font-mono text-xs text-gray-900 bg-gray-100 px-1 py-0.5 rounded">{createdSale.id}</span>
           </div>
           <div className="px-4 py-3 flex justify-between">
-            <span className="text-gray-500">ลูกค้า (Customer)</span>
+            <span className="text-gray-500">ลูกค้า</span>
             <span className="font-medium text-gray-900">{customer?.name}</span>
           </div>
           {buyerCustomer && buyerCustomer.id !== customer?.id && (
             <div className="px-4 py-3 flex justify-between">
-              <span className="text-gray-500">ผู้เช่าซื้อ (Buyer Customer)</span>
+              <span className="text-gray-500">ผู้เช่าซื้อ</span>
               <span className="font-medium text-gray-900">{buyerCustomer.name}</span>
             </div>
           )}
           <div className="px-4 py-3 flex justify-between">
-            <span className="text-gray-500">รถจักรยานยนต์ (Motorcycle)</span>
+            <span className="text-gray-500">รถจักรยานยนต์</span>
             <span className="font-medium text-gray-900">{motorcycle?.brand} {motorcycle?.model}</span>
           </div>
           <div className="px-4 py-3 flex justify-between">
-            <span className="text-gray-500">รูปแบบการชำระ (Payment Method)</span>
-            <span className="font-medium text-gray-900 capitalize">{pricing.payment_method}</span>
+            <span className="text-gray-500">รูปแบบการชำระ</span>
+            <span className="font-medium text-gray-900 capitalize">{TH.paymentMethod[pricing.payment_method] ?? pricing.payment_method}</span>
           </div>
           <div className="px-4 py-3 flex justify-between">
-            <span className="text-gray-500">ราคาสุทธิ (Total Price)</span>
+            <span className="text-gray-500">ราคาสุทธิ</span>
             <span className="font-semibold text-gray-900">{formatPrice(totalPrice)}</span>
           </div>
           <div className="px-4 py-3 flex justify-between">
-            <span className="text-gray-500">เงินดาวน์ (Down Payment)</span>
+            <span className="text-gray-500">เงินดาวน์</span>
             <span className="font-medium text-gray-900">{formatPrice(downPayment)}</span>
           </div>
           {pricing.payment_method !== "cash" && (
             <div className="px-4 py-3 flex justify-between">
-              <span className="text-gray-500">ยอดจัดไฟแนนซ์ (Finance Amount)</span>
+              <span className="text-gray-500">ยอดจัดไฟแนนซ์</span>
               <span className="font-semibold text-primary-700">{formatPrice(financeAmount)}</span>
             </div>
           )}
@@ -1284,7 +1256,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
             onClick={onCancel}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex-1"
           >
-            ปิดหน้าต่างนี้ (Close)
+            ปิดหน้าต่างนี้
           </button>
           <button
             type="button"
@@ -1355,7 +1327,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
             onClick={() => setStep((s) => s - 1)}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            Back
+            ย้อนกลับ
           </button>
         ) : (
           <button
@@ -1363,7 +1335,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
             onClick={onCancel}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            Cancel
+            ยกเลิก
           </button>
         )}
 
@@ -1375,7 +1347,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
             disabled={!canAdvance}
             className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
-            Continue
+            ถัดไป
           </button>
         ) : (
           <button
@@ -1385,7 +1357,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
             disabled={submitting}
             className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
-            {submitting ? "Creating sale…" : "Confirm & Create Sale"}
+            {submitting ? "กำลังสร้างรายการขาย…" : "ยืนยันสร้างรายการขาย"}
           </button>
         )}
       </div>
@@ -1425,7 +1397,7 @@ function SalesPageInner() {
         setSales(res.data);
         setTotal(res.total);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load sales");
+        setError(err instanceof Error ? err.message : "ไม่สามารถโหลดรายการขายได้");
       } finally {
         setLoading(false);
       }
@@ -1460,16 +1432,16 @@ function SalesPageInner() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Sales</h1>
+            <h1 className="text-2xl font-bold text-gray-900">รายการขาย</h1>
             <p className="text-sm text-gray-500 mt-1">
-              {total} sale{total !== 1 ? "s" : ""} total
+              ทั้งหมด {total} รายการ
             </p>
           </div>
           <button
             onClick={() => setShowNewModal(true)}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
           >
-            <span>+</span> New Sale
+            <span>+</span> สร้างรายการขาย
           </button>
         </div>
 
@@ -1500,12 +1472,12 @@ function SalesPageInner() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Sale Date</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Method</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Total Price</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Down Payment</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Finance Amount</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">วันที่ขาย</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">วิธีชำระ</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">ราคารวม</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">เงินดาวน์</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">ยอดจัดไฟแนนซ์</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">สถานะ</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
@@ -1523,12 +1495,12 @@ function SalesPageInner() {
                 ) : sales.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-5 py-12 text-center text-sm text-gray-400">
-                      No sales found.{" "}
+                      ไม่พบรายการขาย{" "}
                       <button
                         onClick={() => setShowNewModal(true)}
                         className="text-primary-600 hover:underline"
                       >
-                        Create one?
+                        สร้างรายการใหม่?
                       </button>
                     </td>
                   </tr>
@@ -1540,7 +1512,7 @@ function SalesPageInner() {
                     >
                       <td className="px-5 py-3 text-gray-600">{formatDate(sale.saleDate)}</td>
                       <td className="px-5 py-3 text-gray-600">
-                        {PAYMENT_METHOD_DISPLAY[sale.paymentMethod] ?? sale.paymentMethod}
+                        {TH.paymentMethod[sale.paymentMethod] ?? sale.paymentMethod}
                       </td>
                       <td className="px-5 py-3 text-right font-medium text-gray-900">
                         {formatPrice(sale.totalPrice)}
@@ -1559,7 +1531,7 @@ function SalesPageInner() {
                             SALE_STATUS_STYLES[sale.status] ?? "bg-gray-100 text-gray-500"
                           }`}
                         >
-                          {sale.status}
+                          {TH.saleStatus[sale.status] ?? sale.status}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
@@ -1567,7 +1539,7 @@ function SalesPageInner() {
                           href={`/sales/${sale.id}`}
                           className="text-primary-600 hover:text-primary-700 text-xs font-medium"
                         >
-                          View
+                          ดูรายละเอียด
                         </Link>
                       </td>
                     </tr>
@@ -1581,7 +1553,7 @@ function SalesPageInner() {
           {!loading && totalPages > 1 && (
             <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50">
               <span className="text-xs text-gray-500">
-                Page {page} of {totalPages}
+                หน้า {page} จาก {totalPages}
               </span>
               <div className="flex gap-2">
                 <button
@@ -1589,14 +1561,14 @@ function SalesPageInner() {
                   onClick={() => setPage((p) => p - 1)}
                   className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
                 >
-                  Previous
+                  ก่อนหน้า
                 </button>
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                   className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
                 >
-                  Next
+                  ถัดไป
                 </button>
               </div>
             </div>
@@ -1608,7 +1580,7 @@ function SalesPageInner() {
       <FormModal
         open={showNewModal}
         onClose={handleCancelModal}
-        title="New Sale"
+        title="สร้างรายการขาย"
         maxWidth="max-w-2xl"
       >
         <NewSaleForm

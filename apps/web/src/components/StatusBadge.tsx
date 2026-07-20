@@ -7,15 +7,15 @@ const statusConfig: Record<
   { label: string; className: string }
 > = {
   in_stock: {
-    label: "In Stock",
+    label: "พร้อมขาย",
     className: "bg-green-100 text-green-700",
   },
   reserved: {
-    label: "Reserved",
+    label: "จองแล้ว",
     className: "bg-yellow-100 text-yellow-700",
   },
   sold: {
-    label: "Sold",
+    label: "ขายแล้ว",
     className: "bg-red-100 text-red-700",
   },
 };

@@ -7,25 +7,23 @@ import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
 import { apiFetch } from "@/lib/api";
 import { toastSuccess, alertError } from "@/lib/swal";
+import { formatPrice, TH } from "@/lib/format";
 import type { Motorcycle, PaginatedResponse, Addon } from "@csyfinproj/shared";
 
 const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
-  { value: "in_stock", label: "In Stock" },
-  { value: "reserved", label: "Reserved" },
-  { value: "sold", label: "Sold" },
+  { value: "", label: "ทุกสถานะ" },
+  { value: "in_stock", label: TH.motorcycleStatus.in_stock },
+  { value: "reserved", label: TH.motorcycleStatus.reserved },
+  { value: "sold", label: TH.motorcycleStatus.sold },
 ];
 
-const PAGE_SIZE = 20;
+const ADDON_TYPE_TH: Record<string, string> = {
+  part: "อะไหล่",
+  accessory: "อุปกรณ์เสริม",
+  service: "บริการ",
+};
 
-function formatPrice(n: number) {
-  return new Intl.NumberFormat("th-TH", {
-    style: "currency",
-    currency: "THB",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
+const PAGE_SIZE = 20;
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
@@ -74,24 +72,24 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
 
   function validate(): boolean {
     const newErrors: Partial<NewMotorcycleForm> = {};
-    if (!form.brand.trim()) newErrors.brand = "Brand is required";
-    if (!form.model.trim()) newErrors.model = "Model is required";
+    if (!form.brand.trim()) newErrors.brand = "กรุณากรอกยี่ห้อ";
+    if (!form.model.trim()) newErrors.model = "กรุณากรอกรุ่น";
     const year = parseInt(form.year);
     if (!form.year || isNaN(year) || year < 1900 || year > 2100) {
-      newErrors.year = "Enter a valid year (e.g. 2024)";
+      newErrors.year = "กรุณากรอกปี ค.ศ. ที่ถูกต้อง (เช่น 2024)";
     }
     if (!form.chassis_number.trim())
-      newErrors.chassis_number = "Chassis number is required";
+      newErrors.chassis_number = "กรุณากรอกเลขตัวถัง";
     if (!form.engine_number.trim())
-      newErrors.engine_number = "Engine number is required";
-    if (!form.color.trim()) newErrors.color = "Color is required";
+      newErrors.engine_number = "กรุณากรอกเลขเครื่องยนต์";
+    if (!form.color.trim()) newErrors.color = "กรุณากรอกสี";
     const costPrice = parseFloat(form.cost_price);
     if (!form.cost_price || isNaN(costPrice) || costPrice <= 0) {
-      newErrors.cost_price = "Enter a valid cost price";
+      newErrors.cost_price = "กรุณากรอกราคาทุนที่ถูกต้อง";
     }
     const sellingPrice = parseFloat(form.selling_price);
     if (!form.selling_price || isNaN(sellingPrice) || sellingPrice <= 0) {
-      newErrors.selling_price = "Enter a valid selling price";
+      newErrors.selling_price = "กรุณากรอกราคาขายที่ถูกต้อง";
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -116,10 +114,10 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
           selling_price: parseFloat(form.selling_price),
         }),
       });
-      toastSuccess("Motorcycle added successfully");
+      toastSuccess("เพิ่มรถเรียบร้อยแล้ว");
       onSuccess();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to add motorcycle";
+      const msg = err instanceof Error ? err.message : "เพิ่มรถไม่สำเร็จ";
       setSubmitError(msg);
       alertError(msg);
     } finally {
@@ -137,7 +135,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">ยี่ห้อ</label>
           <input
             type="text"
             value={form.brand}
@@ -149,7 +147,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Model <span className="text-red-500">*</span>
+            รุ่น <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
@@ -165,7 +163,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Year <span className="text-red-500">*</span>
+            ปี <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
@@ -180,14 +178,14 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Color <span className="text-red-500">*</span>
+            สี <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
             value={form.color}
             onChange={(e) => set("color", e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
-            placeholder="Midnight Black"
+            placeholder="เช่น ดำ"
           />
           <FieldError message={errors.color} />
         </div>
@@ -195,7 +193,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Chassis Number <span className="text-red-500">*</span>
+          เลขตัวถัง <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
@@ -209,7 +207,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Engine Number <span className="text-red-500">*</span>
+          เลขเครื่องยนต์ <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
@@ -224,7 +222,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Cost Price (THB) <span className="text-red-500">*</span>
+            ราคาทุน (บาท) <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
@@ -239,7 +237,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Selling Price (THB) <span className="text-red-500">*</span>
+            ราคาขาย (บาท) <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
@@ -260,14 +258,14 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
           disabled={submitting}
           className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
-          {submitting ? "Adding…" : "Add Motorcycle"}
+          {submitting ? "กำลังเพิ่ม…" : "เพิ่มรถ"}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
-          Cancel
+          ยกเลิก
         </button>
       </div>
     </form>
@@ -330,22 +328,22 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
 
   function validate(): boolean {
     const newErrors: Partial<AddonFormState> = {};
-    if (!form.name.trim()) newErrors.name = "Name is required";
-    
+    if (!form.name.trim()) newErrors.name = "กรุณากรอกชื่อ";
+
     const price = parseFloat(form.price);
     if (!form.price || isNaN(price) || price < 0) {
-      newErrors.price = "Enter a valid selling price";
+      newErrors.price = "กรุณากรอกราคาขายที่ถูกต้อง";
     }
 
     if (form.type !== "service") {
       const costPrice = parseFloat(form.cost_price);
       if (form.cost_price && (isNaN(costPrice) || costPrice < 0)) {
-        newErrors.cost_price = "Enter a valid cost price";
+        newErrors.cost_price = "กรุณากรอกราคาทุนที่ถูกต้อง";
       }
 
       const stockQty = parseInt(form.stock_qty);
       if (form.stock_qty && (isNaN(stockQty) || stockQty < 0)) {
-        newErrors.stock_qty = "Enter a valid stock quantity";
+        newErrors.stock_qty = "กรุณากรอกจำนวนสต็อกที่ถูกต้อง";
       }
     }
 
@@ -385,17 +383,17 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
           method: "PATCH",
           body: JSON.stringify(body),
         });
-        toastSuccess("Inventory item updated successfully");
+        toastSuccess("แก้ไขรายการสินค้าเรียบร้อยแล้ว");
       } else {
         await apiFetch("/addons", {
           method: "POST",
           body: JSON.stringify(body),
         });
-        toastSuccess("Inventory item created successfully");
+        toastSuccess("เพิ่มรายการสินค้าเรียบร้อยแล้ว");
       }
       onSuccess();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to save item";
+      const msg = err instanceof Error ? err.message : "บันทึกรายการไม่สำเร็จ";
       setSubmitError(msg);
       alertError(msg);
     } finally {
@@ -413,15 +411,15 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
 
       {!typeLimit && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
           <select
             value={form.type}
             onChange={(e) => set("type", e.target.value as any)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
           >
-            <option value="part">Part</option>
-            <option value="accessory">Accessory</option>
-            <option value="service">Service Item</option>
+            <option value="part">อะไหล่</option>
+            <option value="accessory">อุปกรณ์เสริม</option>
+            <option value="service">รายการบริการ</option>
           </select>
         </div>
       )}
@@ -429,14 +427,14 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Name <span className="text-red-500">*</span>
+            ชื่อ <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
             value={form.name}
             onChange={(e) => set("name", e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
-            placeholder={form.type === "service" ? "Compulsory Insurance (พรบ.)" : "Helmet Model X"}
+            placeholder={form.type === "service" ? "เช่น พ.ร.บ." : "เช่น หมวกกันน็อก รุ่น X"}
           />
           <FieldError message={errors.name} />
         </div>
@@ -457,12 +455,12 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">รายละเอียด</label>
         <textarea
           value={form.description}
           onChange={(e) => set("description", e.target.value)}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
-          placeholder="Enter item details..."
+          placeholder="กรอกรายละเอียดสินค้า…"
           rows={3}
         />
         <FieldError message={errors.description} />
@@ -471,7 +469,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {form.type !== "service" && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (THB)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ราคาทุน (บาท)</label>
             <input
               type="number"
               value={form.cost_price}
@@ -487,7 +485,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Selling Price (THB) <span className="text-red-500">*</span>
+            ราคาขาย (บาท) <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
@@ -503,7 +501,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
 
         {form.type !== "service" && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Stock Quantity</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนสต็อก</label>
             <input
               type="number"
               value={form.stock_qty}
@@ -524,14 +522,14 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
           disabled={submitting}
           className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
-          {submitting ? "Saving…" : addon ? "Save Changes" : "Create Item"}
+          {submitting ? "กำลังบันทึก…" : addon ? "บันทึกการแก้ไข" : "เพิ่มรายการ"}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
-          Cancel
+          ยกเลิก
         </button>
       </div>
     </form>
@@ -585,7 +583,7 @@ export default function InventoryPage() {
         setTotalMotorcycles(res.total);
       } catch (err) {
         setMotoError(
-          err instanceof Error ? err.message : "Failed to load motorcycles"
+          err instanceof Error ? err.message : "โหลดข้อมูลรถไม่สำเร็จ"
         );
       } finally {
         setMotoLoading(false);
@@ -606,7 +604,7 @@ export default function InventoryPage() {
       setAddons(res.data);
     } catch (err) {
       setAddonsError(
-        err instanceof Error ? err.message : "Failed to load addons"
+        err instanceof Error ? err.message : "โหลดข้อมูลสินค้าไม่สำเร็จ"
       );
     } finally {
       setAddonsLoading(false);
@@ -652,19 +650,19 @@ export default function InventoryPage() {
         method: "PATCH",
         body: JSON.stringify({ stock_qty: newQty }),
       });
-      toastSuccess(`Stock for "${addon.name}" updated successfully`);
+      toastSuccess(`อัปเดตสต็อกของ "${addon.name}" เรียบร้อยแล้ว`);
       fetchAddons(addonsSearch);
     } catch (err) {
-      alertError(err instanceof Error ? err.message : "Failed to adjust stock");
+      alertError(err instanceof Error ? err.message : "ปรับสต็อกไม่สำเร็จ");
     }
   }
 
   async function handleSetStock(addon: Addon) {
-    const valueStr = prompt(`Enter new stock quantity for ${addon.name}:`, String(addon.stockQty));
+    const valueStr = prompt(`กรอกจำนวนสต็อกใหม่ของ ${addon.name}:`, String(addon.stockQty));
     if (valueStr === null) return;
     const value = parseInt(valueStr);
     if (isNaN(value) || value < 0) {
-      alertError("Please enter a valid non-negative integer");
+      alertError("กรุณากรอกจำนวนเต็มที่ไม่ติดลบ");
       return;
     }
     try {
@@ -672,10 +670,10 @@ export default function InventoryPage() {
         method: "PATCH",
         body: JSON.stringify({ stock_qty: value }),
       });
-      toastSuccess(`Stock for "${addon.name}" updated successfully`);
+      toastSuccess(`อัปเดตสต็อกของ "${addon.name}" เรียบร้อยแล้ว`);
       fetchAddons(addonsSearch);
     } catch (err) {
-      alertError(err instanceof Error ? err.message : "Failed to update stock");
+      alertError(err instanceof Error ? err.message : "อัปเดตสต็อกไม่สำเร็จ");
     }
   }
 
@@ -699,13 +697,13 @@ export default function InventoryPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
+            <h1 className="text-2xl font-bold text-gray-900">คลังสินค้า</h1>
             <p className="text-sm text-gray-500 mt-1">
               {activeTab === "motorcycles"
-                ? `${totalMotorcycles} motorcycle${totalMotorcycles !== 1 ? "s" : ""} in stock`
+                ? `รถทั้งหมด ${totalMotorcycles} คัน`
                 : activeTab === "addons"
-                ? `${filteredParts.length} physical item${filteredParts.length !== 1 ? "s" : ""} configured`
-                : `${filteredServices.length} service item${filteredServices.length !== 1 ? "s" : ""} configured`}
+                ? `อะไหล่/อุปกรณ์เสริม ${filteredParts.length} รายการ`
+                : `รายการบริการ ${filteredServices.length} รายการ`}
             </p>
           </div>
 
@@ -715,7 +713,7 @@ export default function InventoryPage() {
                 onClick={() => setShowAddMotoModal(true)}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
               >
-                <span>+</span> Add Motorcycle
+                <span>+</span> เพิ่มรถ
               </button>
             ) : activeTab === "addons" ? (
               <button
@@ -725,7 +723,7 @@ export default function InventoryPage() {
                 }}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
               >
-                <span>+</span> Add Part/Accessory
+                <span>+</span> เพิ่มอะไหล่/อุปกรณ์เสริม
               </button>
             ) : (
               <button
@@ -735,7 +733,7 @@ export default function InventoryPage() {
                 }}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
               >
-                <span>+</span> Add Service Item
+                <span>+</span> เพิ่มรายการบริการ
               </button>
             )}
           </div>
@@ -751,7 +749,7 @@ export default function InventoryPage() {
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
             }`}
           >
-            Motorcycles
+            รถจักรยานยนต์
           </button>
           <button
             onClick={() => setActiveTab("addons")}
@@ -761,7 +759,7 @@ export default function InventoryPage() {
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
             }`}
           >
-            Parts & Accessories
+            อะไหล่และอุปกรณ์เสริม
           </button>
           <button
             onClick={() => setActiveTab("services")}
@@ -771,7 +769,7 @@ export default function InventoryPage() {
                 : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
             }`}
           >
-            Service Items & Freebies
+            รายการบริการและของแถม
           </button>
         </div>
 
@@ -790,7 +788,7 @@ export default function InventoryPage() {
                       : "text-gray-500 hover:text-gray-900"
                   }`}
                 >
-                  In Stock (ยังไม่ขาย)
+                  {TH.motorcycleStatus.in_stock}
                 </button>
                 <button
                   onClick={() => handleMotoStatusFilter("reserved")}
@@ -800,7 +798,7 @@ export default function InventoryPage() {
                       : "text-gray-500 hover:text-gray-900"
                   }`}
                 >
-                  Reserved (จองแล้ว)
+                  {TH.motorcycleStatus.reserved}
                 </button>
                 <button
                   onClick={() => handleMotoStatusFilter("sold")}
@@ -810,7 +808,7 @@ export default function InventoryPage() {
                       : "text-gray-500 hover:text-gray-900"
                   }`}
                 >
-                  Sold (ขายแล้ว)
+                  {TH.motorcycleStatus.sold}
                 </button>
                 <button
                   onClick={() => handleMotoStatusFilter("")}
@@ -820,7 +818,7 @@ export default function InventoryPage() {
                       : "text-gray-500 hover:text-gray-900"
                   }`}
                 >
-                  All (ทั้งหมด)
+                  ทั้งหมด
                 </button>
               </div>
 
@@ -828,7 +826,7 @@ export default function InventoryPage() {
               <div className="flex flex-1 flex-col sm:flex-row gap-3 lg:justify-end w-full lg:w-auto">
                 <input
                   type="text"
-                  placeholder="Search model, chassis, color…"
+                  placeholder="ค้นหารุ่น เลขตัวถัง สี…"
                   value={motoSearch}
                   onChange={(e) => handleMotoSearch(e.target.value)}
                   className="flex-1 max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
@@ -844,11 +842,11 @@ export default function InventoryPage() {
                   }}
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
                 >
-                  <option value="createdAt:desc">Newest Received (สินค้าใหม่ล่าสุด)</option>
-                  <option value="createdAt:asc">Oldest Received (สินค้าเก่าสุด / ตามวันที่รับ)</option>
-                  <option value="model:asc">Model Name (ก-ฮ)</option>
-                  <option value="sellingPrice:asc">Price: Low to High (ราคา: ต่ำ-สูง)</option>
-                  <option value="sellingPrice:desc">Price: High to Low (ราคา: สูง-ต่ำ)</option>
+                  <option value="createdAt:desc">รับเข้าล่าสุด</option>
+                  <option value="createdAt:asc">รับเข้าเก่าสุด (ตามวันที่รับ)</option>
+                  <option value="model:asc">ชื่อรุ่น (ก-ฮ)</option>
+                  <option value="sellingPrice:asc">ราคา: ต่ำไปสูง</option>
+                  <option value="sellingPrice:desc">ราคา: สูงไปต่ำ</option>
                 </select>
               </div>
             </div>
@@ -865,14 +863,14 @@ export default function InventoryPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Model</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Year</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Color</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Chassis #</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Engine #</th>
-                      <th className="text-right px-5 py-3 font-medium text-gray-500">Cost Price</th>
-                      <th className="text-right px-5 py-3 font-medium text-gray-500">Selling Price</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">รุ่น</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">ปี</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">สี</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">เลขตัวถัง</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">เลขเครื่องยนต์</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">ราคาทุน</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">ราคาขาย</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">สถานะ</th>
                       <th className="px-5 py-3" />
                     </tr>
                   </thead>
@@ -893,12 +891,12 @@ export default function InventoryPage() {
                           colSpan={9}
                           className="px-5 py-12 text-center text-sm text-gray-400"
                         >
-                          No motorcycles found.{" "}
+                          ไม่พบข้อมูลรถ{" "}
                           <button
                             onClick={() => setShowAddMotoModal(true)}
                             className="text-primary-600 hover:underline"
                           >
-                            Add one?
+                            เพิ่มรถใหม่?
                           </button>
                         </td>
                       </tr>
@@ -933,7 +931,7 @@ export default function InventoryPage() {
                               href={`/inventory/${moto.id}`}
                               className="text-primary-600 hover:text-primary-700 text-xs font-medium"
                             >
-                              View
+                              ดูรายละเอียด
                             </Link>
                           </td>
                         </tr>
@@ -947,7 +945,7 @@ export default function InventoryPage() {
               {!motoLoading && totalMotoPages > 1 && (
                 <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50">
                   <span className="text-xs text-gray-500">
-                    Page {motoPage} of {totalMotoPages}
+                    หน้า {motoPage} จาก {totalMotoPages}
                   </span>
                   <div className="flex gap-2">
                     <button
@@ -955,14 +953,14 @@ export default function InventoryPage() {
                       onClick={() => setMotoPage((p) => p - 1)}
                       className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors bg-white"
                     >
-                      Previous
+                      ก่อนหน้า
                     </button>
                     <button
                       disabled={motoPage >= totalMotoPages}
                       onClick={() => setMotoPage((p) => p + 1)}
                       className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors bg-white"
                     >
-                      Next
+                      ถัดไป
                     </button>
                   </div>
                 </div>
@@ -978,7 +976,7 @@ export default function InventoryPage() {
             <div className="flex gap-3 mb-6">
               <input
                 type="text"
-                placeholder="Search SKU, name, description…"
+                placeholder="ค้นหา SKU ชื่อ รายละเอียด…"
                 value={addonsSearch}
                 onChange={(e) => setAddonsSearch(e.target.value)}
                 className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
@@ -998,12 +996,12 @@ export default function InventoryPage() {
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
                       <th className="text-left px-5 py-3 font-medium text-gray-500">SKU</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Type</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Description</th>
-                      <th className="text-right px-5 py-3 font-medium text-gray-500">Cost Price</th>
-                      <th className="text-right px-5 py-3 font-medium text-gray-500">Selling Price</th>
-                      <th className="text-center px-5 py-3 font-medium text-gray-500" style={{ width: "180px" }}>Stock Qty</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">ชื่อ</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">ประเภท</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">รายละเอียด</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">ราคาทุน</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">ราคาขาย</th>
+                      <th className="text-center px-5 py-3 font-medium text-gray-500" style={{ width: "180px" }}>จำนวนสต็อก</th>
                       <th className="px-5 py-3" />
                     </tr>
                   </thead>
@@ -1024,7 +1022,7 @@ export default function InventoryPage() {
                           colSpan={8}
                           className="px-5 py-12 text-center text-sm text-gray-400"
                         >
-                          No parts or accessories found.{" "}
+                          ไม่พบอะไหล่หรืออุปกรณ์เสริม{" "}
                           <button
                             onClick={() => {
                               setEditingAddon(null);
@@ -1032,7 +1030,7 @@ export default function InventoryPage() {
                             }}
                             className="text-primary-600 hover:underline"
                           >
-                            Add one?
+                            เพิ่มรายการใหม่?
                           </button>
                         </td>
                       </tr>
@@ -1049,7 +1047,7 @@ export default function InventoryPage() {
                             {addon.name}
                           </td>
                           <td className="px-5 py-3 text-gray-600 capitalize">
-                            {addon.type}
+                            {ADDON_TYPE_TH[addon.type] ?? addon.type}
                           </td>
                           <td className="px-5 py-3 text-gray-500 max-w-xs truncate">
                             {addon.description || "-"}
@@ -1066,21 +1064,21 @@ export default function InventoryPage() {
                                 onClick={() => handleQuickStockAdjust(addon, -1)}
                                 disabled={addon.stockQty <= 0}
                                 className="w-6 h-6 flex items-center justify-center rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent text-xs"
-                                title="Decrease Stock by 1"
+                                title="ลดสต็อก 1 หน่วย"
                               >
                                 -
                               </button>
                               <button
                                 onClick={() => handleSetStock(addon)}
                                 className="px-2 py-0.5 min-w-[32px] text-center font-semibold rounded bg-gray-100 hover:bg-gray-200 text-gray-900 text-xs"
-                                title="Click to manually set stock"
+                                title="คลิกเพื่อกำหนดจำนวนสต็อกเอง"
                               >
                                 {addon.stockQty}
                               </button>
                               <button
                                 onClick={() => handleQuickStockAdjust(addon, 1)}
                                 className="w-6 h-6 flex items-center justify-center rounded border border-gray-300 text-gray-600 hover:bg-gray-50 text-xs"
-                                title="Increase Stock by 1"
+                                title="เพิ่มสต็อก 1 หน่วย"
                               >
                                 +
                               </button>
@@ -1094,7 +1092,7 @@ export default function InventoryPage() {
                               }}
                               className="text-primary-600 hover:text-primary-700 text-xs font-medium"
                             >
-                              Edit
+                              แก้ไข
                             </button>
                           </td>
                         </tr>
@@ -1114,7 +1112,7 @@ export default function InventoryPage() {
             <div className="flex gap-3 mb-6">
               <input
                 type="text"
-                placeholder="Search name, description…"
+                placeholder="ค้นหาชื่อ รายละเอียด…"
                 value={addonsSearch}
                 onChange={(e) => setAddonsSearch(e.target.value)}
                 className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder-gray-400 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
@@ -1133,10 +1131,10 @@ export default function InventoryPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Description</th>
-                      <th className="text-right px-5 py-3 font-medium text-gray-500">Selling Price</th>
-                      <th className="text-center px-5 py-3 font-medium text-gray-500">Status</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">ชื่อ</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">รายละเอียด</th>
+                      <th className="text-right px-5 py-3 font-medium text-gray-500">ราคาขาย</th>
+                      <th className="text-center px-5 py-3 font-medium text-gray-500">สถานะ</th>
                       <th className="px-5 py-3" />
                     </tr>
                   </thead>
@@ -1157,7 +1155,7 @@ export default function InventoryPage() {
                           colSpan={5}
                           className="px-5 py-12 text-center text-sm text-gray-400"
                         >
-                          No service items found.{" "}
+                          ไม่พบรายการบริการ{" "}
                           <button
                             onClick={() => {
                               setEditingAddon(null);
@@ -1165,7 +1163,7 @@ export default function InventoryPage() {
                             }}
                             className="text-primary-600 hover:underline"
                           >
-                            Add one?
+                            เพิ่มรายการใหม่?
                           </button>
                         </td>
                       </tr>
@@ -1186,7 +1184,7 @@ export default function InventoryPage() {
                           </td>
                           <td className="px-5 py-3 text-center">
                             <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${addon.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                              {addon.active ? "Active" : "Inactive"}
+                              {addon.active ? "ใช้งาน" : "ปิดใช้งาน"}
                             </span>
                           </td>
                           <td className="px-5 py-3 text-right">
@@ -1197,7 +1195,7 @@ export default function InventoryPage() {
                               }}
                               className="text-primary-600 hover:text-primary-700 text-xs font-medium"
                             >
-                              Edit
+                              แก้ไข
                             </button>
                           </td>
                         </tr>
@@ -1215,7 +1213,7 @@ export default function InventoryPage() {
       <FormModal
         open={showAddMotoModal}
         onClose={() => setShowAddMotoModal(false)}
-        title="Add Motorcycle"
+        title="เพิ่มรถ"
         maxWidth="max-w-xl"
       >
         <AddMotorcycleForm
@@ -1231,7 +1229,7 @@ export default function InventoryPage() {
           setShowAddAddonModal(false);
           setEditingAddon(null);
         }}
-        title={editingAddon ? "Edit Inventory Item" : activeTab === "addons" ? "Add Part/Accessory" : "Add Service Item"}
+        title={editingAddon ? "แก้ไขรายการสินค้า" : activeTab === "addons" ? "เพิ่มอะไหล่/อุปกรณ์เสริม" : "เพิ่มรายการบริการ"}
         maxWidth="max-w-xl"
       >
         <AddonForm

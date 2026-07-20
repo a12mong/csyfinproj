@@ -35,6 +35,7 @@ export async function confirmDelete(itemName = "this item"): Promise<boolean> {
 export async function confirm(options: {
   title: string;
   text?: string;
+  html?: string;
   confirmText?: string;
   cancelText?: string;
   icon?: "warning" | "question" | "info";
@@ -42,11 +43,13 @@ export async function confirm(options: {
   const result = await base.fire({
     title: options.title,
     text: options.text,
+    html: options.html,
     icon: options.icon ?? "question",
     showCancelButton: true,
     confirmButtonText: options.confirmText ?? "Confirm",
     cancelButtonText: options.cancelText ?? "Cancel",
     reverseButtons: true,
+    width: options.html ? "42em" : undefined,
   });
   return result.isConfirmed;
 }

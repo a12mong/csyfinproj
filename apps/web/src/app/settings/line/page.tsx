@@ -56,6 +56,36 @@ export default function LineSettingsPage() {
 
   const [sending, setSending] = useState(false);
 
+  // System settings (LINE OA Basic ID)
+  const [oaBasicId, setOaBasicId] = useState("");
+  const [oaLoaded, setOaLoaded] = useState(false);
+  const [savingOa, setSavingOa] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ data: Array<{ key: string; value: string }> }>("/settings")
+      .then((res) => {
+        const row = res.data.find((s) => s.key === "line_oa_basic_id");
+        setOaBasicId(row?.value ?? "");
+      })
+      .catch(() => {})
+      .finally(() => setOaLoaded(true));
+  }, []);
+
+  async function handleSaveOaBasicId() {
+    setSavingOa(true);
+    try {
+      await apiFetch("/settings/line_oa_basic_id", {
+        method: "PUT",
+        body: JSON.stringify({ value: oaBasicId }),
+      });
+      toastSuccess("บันทึก LINE OA Basic ID เรียบร้อยแล้ว");
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : "Failed to save setting");
+    } finally {
+      setSavingOa(false);
+    }
+  }
+
   // Fetch LINE config status
   useEffect(() => {
     setStatusLoading(true);
@@ -205,10 +235,55 @@ export default function LineSettingsPage() {
                   </div>
                 </div>
                 <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500 mb-1">Webhook URL</p>
-                  <code className="text-sm text-gray-700">
-                    {lineStatus.webhookUrl}
-                  </code>
+                  <p className="text-xs text-gray-500 mb-1">
+                    Webhook URL (นำไปวางใน LINE Developers Console → Messaging API)
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm text-gray-700 break-all flex-1">
+                      {lineStatus.webhookUrl}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard
+                          .writeText(lineStatus.webhookUrl)
+                          .then(() => toastSuccess("คัดลอก Webhook URL แล้ว"));
+                      }}
+                      className="shrink-0 px-2.5 py-1 text-xs font-medium rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 transition-colors"
+                    >
+                      คัดลอก
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-gray-400">
+                    หมายเหตุ: LINE ต้องเข้าถึง URL นี้ได้จากอินเทอร์เน็ต (HTTPS) —
+                    localhost ใช้ทดสอบกับ LINE จริงไม่ได้ ต้องใช้โดเมนที่ deploy แล้วหรือ tunnel เช่น ngrok
+                  </p>
+                </div>
+
+                {/* LINE-side configuration checklist */}
+                <div className="mt-3 rounded-lg border border-gray-200 p-4">
+                  <p className="text-xs font-semibold text-gray-700 mb-2">
+                    ✅ Checklist การตั้งค่าฝั่ง LINE (ทำครั้งเดียว)
+                  </p>
+                  <ul className="text-xs text-gray-600 space-y-1.5 list-disc pl-4">
+                    <li>
+                      <b>LINE Developers Console</b> → Messaging API: วาง Webhook URL ด้านบน
+                      แล้วเปิด <b>Use webhook = ON</b> (กด Verify เพื่อทดสอบได้)
+                    </li>
+                    <li>
+                      Channel ต้องเป็นของ OA เดียวกับ <b>LINE OA Basic ID</b> ที่ตั้งไว้ด้านล่าง
+                      (token/secret คนละ OA = ข้อความไม่เข้าระบบ)
+                    </li>
+                    <li>
+                      <b>LINE OA Manager</b> (manager.line.biz) → ตั้งค่าการตอบกลับ:
+                      ปิด <b>ตอบกลับอัตโนมัติ (Auto-response)</b> เพื่อไม่ให้ตอบซ้อนกับระบบ
+                      (เปิดโหมด Chat ควบคู่กับ Webhook ได้ แอดมินยังคุยกับลูกค้าได้ปกติ)
+                    </li>
+                    <li>
+                      แนะนำตั้ง <b>Greeting message</b> ตอน Add Friend เช่น
+                      &quot;หากมาเชื่อมต่อบัญชี กรุณากดส่งข้อความรหัสที่เตรียมไว้ให้ได้เลยครับ&quot;
+                    </li>
+                  </ul>
                 </div>
                 {!lineStatus.configured && (
                   <div className="mt-3 rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
@@ -222,6 +297,39 @@ export default function LineSettingsPage() {
               <div className="text-sm text-gray-500">
                 Unable to load LINE configuration status.
               </div>
+            )}
+          </div>
+
+          {/* LINE OA Basic ID Setting */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">
+              LINE OA Basic ID
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Basic ID ของ LINE Official Account (เช่น @400rbdse) — ใช้สร้าง QR Code
+              เชื่อมบัญชีลูกค้าแบบสแกนแล้วกดส่งข้อความรหัสได้ทันที โดยไม่ต้อง LINE Login
+            </p>
+            <div className="flex gap-2 max-w-md">
+              <input
+                type="text"
+                placeholder="@yourOAid"
+                value={oaBasicId}
+                onChange={(e) => setOaBasicId(e.target.value)}
+                disabled={!oaLoaded}
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:bg-gray-50"
+              />
+              <button
+                onClick={handleSaveOaBasicId}
+                disabled={savingOa || !oaLoaded}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              >
+                {savingOa ? "กำลังบันทึก…" : "บันทึก"}
+              </button>
+            </div>
+            {oaLoaded && !oaBasicId.trim() && (
+              <p className="mt-2 text-xs text-amber-600">
+                ⚠ ยังไม่ได้ตั้งค่า — หน้าลูกค้าจะใช้วิธีเชื่อมต่อแบบ LINE Login (LIFF) แทน
+              </p>
             )}
           </div>
 

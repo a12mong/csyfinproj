@@ -7,6 +7,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import FormModal from "@/components/FormModal";
 import { apiFetch } from "@/lib/api";
 import { toastSuccess, alertError } from "@/lib/swal";
+import { formatDate, TH } from "@/lib/format";
 
 // ─── API shapes (snake_case from backend) ─────────────────────────────────────
 
@@ -30,10 +31,10 @@ interface ListResponse {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
-  { value: "pending", label: "Pending" },
-  { value: "verified", label: "Verified" },
-  { value: "cancelled", label: "Cancelled" },
+  { value: "", label: "ทุกสถานะ" },
+  { value: "pending", label: TH.grnStatus.pending },
+  { value: "verified", label: TH.grnStatus.verified },
+  { value: "cancelled", label: TH.grnStatus.cancelled },
 ];
 
 const STATUS_STYLES: Record<string, string> = {
@@ -43,16 +44,6 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const PAGE_SIZE = 20;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 // ─── Item row state ───────────────────────────────────────────────────────────
 
@@ -130,13 +121,13 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
           .filter(Boolean);
         if (chassis.length !== qty) {
           setError(
-            `Item "${item.description || "(motorcycle)"}" needs ${qty} chassis number(s), got ${chassis.length}.`
+            `รายการ "${item.description || "(รถจักรยานยนต์)"}" ต้องมีเลขตัวถัง ${qty} รายการ แต่กรอกมา ${chassis.length} รายการ`
           );
           return;
         }
         if (engines.length !== qty) {
           setError(
-            `Item "${item.description || "(motorcycle)"}" needs ${qty} engine number(s), got ${engines.length}.`
+            `รายการ "${item.description || "(รถจักรยานยนต์)"}" ต้องมีเลขเครื่องยนต์ ${qty} รายการ แต่กรอกมา ${engines.length} รายการ`
           );
           return;
         }
@@ -181,11 +172,11 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
         body: JSON.stringify(payload),
       });
 
-      toastSuccess("Delivery note created successfully");
+      toastSuccess("สร้างใบรับสินค้าเรียบร้อยแล้ว");
       onSuccess(res.data.id);
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : "Failed to create delivery note";
+        err instanceof Error ? err.message : "สร้างใบรับสินค้าไม่สำเร็จ";
       setError(msg);
       alertError(msg);
       setSubmitting(false);
@@ -198,7 +189,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Note Number <span className="text-red-500">*</span>
+            เลขที่ใบรับ <span className="text-red-500">*</span>
           </label>
           <input
             required
@@ -211,7 +202,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Received Date <span className="text-red-500">*</span>
+            วันที่รับ <span className="text-red-500">*</span>
           </label>
           <input
             required
@@ -225,7 +216,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Supplier Name <span className="text-red-500">*</span>
+          ชื่อผู้จำหน่าย <span className="text-red-500">*</span>
         </label>
         <input
           required
@@ -239,14 +230,14 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Notes
+          หมายเหตุ
         </label>
         <textarea
           rows={2}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
-          placeholder="Optional notes…"
+          placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)…"
         />
       </div>
 
@@ -254,14 +245,14 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold text-gray-900">
-            Items <span className="text-red-500">*</span>
+            รายการสินค้า <span className="text-red-500">*</span>
           </h3>
           <button
             type="button"
             onClick={() => setItems((prev) => [...prev, makeItem()])}
             className="text-xs text-primary-600 hover:text-primary-700 font-medium"
           >
-            + Add Item
+            + เพิ่มรายการ
           </button>
         </div>
 
@@ -273,7 +264,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-gray-600">
-                  Item {idx + 1}
+                  รายการที่ {idx + 1}
                 </span>
                 {items.length > 1 && (
                   <button
@@ -281,7 +272,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                     onClick={() => removeItem(item.localId)}
                     className="text-xs text-red-500 hover:text-red-700"
                   >
-                    Remove
+                    ลบ
                   </button>
                 )}
               </div>
@@ -289,7 +280,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Type <span className="text-red-500">*</span>
+                    ประเภท <span className="text-red-500">*</span>
                   </label>
                   <select
                     required
@@ -301,14 +292,14 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                     }
                     className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
                   >
-                    <option value="motorcycle">Motorcycle</option>
-                    <option value="part">Part</option>
-                    <option value="accessory">Accessory</option>
+                    <option value="motorcycle">รถจักรยานยนต์</option>
+                    <option value="part">อะไหล่</option>
+                    <option value="accessory">อุปกรณ์เสริม</option>
                   </select>
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Description <span className="text-red-500">*</span>
+                    รายละเอียด <span className="text-red-500">*</span>
                   </label>
                   <input
                     required
@@ -320,7 +311,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                     placeholder={
                       item.item_type === "motorcycle"
                         ? "NMAX 155 2024"
-                        : "Item description"
+                        : "รายละเอียดสินค้า"
                     }
                     className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
                   />
@@ -330,7 +321,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Qty <span className="text-red-500">*</span>
+                    จำนวน <span className="text-red-500">*</span>
                   </label>
                   <input
                     required
@@ -345,7 +336,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Unit Cost (THB) <span className="text-red-500">*</span>
+                    ราคาทุนต่อหน่วย (บาท) <span className="text-red-500">*</span>
                   </label>
                   <input
                     required
@@ -363,7 +354,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                 {item.item_type === "motorcycle" ? (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Selling Price (THB)
+                      ราคาขาย (บาท)
                     </label>
                     <input
                       type="number"
@@ -389,7 +380,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Color
+                        สี
                       </label>
                       <input
                         type="text"
@@ -397,13 +388,13 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                         onChange={(e) =>
                           updateItem(item.localId, { color: e.target.value })
                         }
-                        placeholder="Matte Black"
+                        placeholder="เช่น ดำด้าน"
                         className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
                       />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Year
+                        ปี
                       </label>
                       <input
                         type="number"
@@ -421,10 +412,10 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Chassis Numbers{" "}
+                        เลขตัวถัง{" "}
                         <span className="text-red-500">*</span>
                         <span className="text-gray-400 ml-1">
-                          (one per line, qty={item.quantity})
+                          (บรรทัดละ 1 รายการ, จำนวน={item.quantity})
                         </span>
                       </label>
                       <textarea
@@ -442,10 +433,10 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Engine Numbers{" "}
+                        เลขเครื่องยนต์{" "}
                         <span className="text-red-500">*</span>
                         <span className="text-gray-400 ml-1">
-                          (one per line, qty={item.quantity})
+                          (บรรทัดละ 1 รายการ, จำนวน={item.quantity})
                         </span>
                       </label>
                       <textarea
@@ -481,14 +472,14 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
           onClick={onCancel}
           className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
-          Cancel
+          ยกเลิก
         </button>
         <button
           type="submit"
           disabled={submitting}
           className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
-          {submitting ? "Creating…" : "Create Delivery Note"}
+          {submitting ? "กำลังสร้าง…" : "สร้างใบรับสินค้า"}
         </button>
       </div>
     </form>
@@ -531,7 +522,7 @@ export default function ReceivingPage() {
         setTotal(res.total);
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Failed to load delivery notes"
+          err instanceof Error ? err.message : "โหลดใบรับสินค้าไม่สำเร็จ"
         );
       } finally {
         setLoading(false);
@@ -558,17 +549,17 @@ export default function ReceivingPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              Goods Receiving
+              รับสินค้าเข้า
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              {total} delivery note{total !== 1 ? "s" : ""}
+              ใบรับสินค้า {total} ใบ
             </p>
           </div>
           <button
             onClick={() => setShowNewModal(true)}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
           >
-            <span>+</span> New GRN
+            <span>+</span> สร้างใบรับสินค้า
           </button>
         </div>
 
@@ -591,7 +582,7 @@ export default function ReceivingPage() {
 
           <input
             type="text"
-            placeholder="Search supplier…"
+            placeholder="ค้นหาผู้จำหน่าย…"
             value={supplierSearch}
             onChange={(e) => {
               setSupplierSearch(e.target.value);
@@ -636,19 +627,19 @@ export default function ReceivingPage() {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">
-                    Note #
+                    เลขที่ใบรับ
                   </th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">
-                    Supplier
+                    ผู้จำหน่าย
                   </th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">
-                    Received Date
+                    วันที่รับ
                   </th>
                   <th className="text-center px-5 py-3 font-medium text-gray-500">
-                    Items
+                    จำนวนรายการ
                   </th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">
-                    Status
+                    สถานะ
                   </th>
                   <th className="px-5 py-3" />
                 </tr>
@@ -670,12 +661,12 @@ export default function ReceivingPage() {
                       colSpan={6}
                       className="px-5 py-12 text-center text-sm text-gray-400"
                     >
-                      No delivery notes found.{" "}
+                      ไม่พบใบรับสินค้า{" "}
                       <button
                         onClick={() => setShowNewModal(true)}
                         className="text-primary-600 hover:underline"
                       >
-                        Create one?
+                        สร้างใบใหม่?
                       </button>
                     </td>
                   </tr>
@@ -704,7 +695,7 @@ export default function ReceivingPage() {
                             "bg-gray-100 text-gray-500"
                           }`}
                         >
-                          {note.status}
+                          {TH.grnStatus[note.status] ?? note.status}
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
@@ -712,7 +703,7 @@ export default function ReceivingPage() {
                           href={`/receiving/${note.id}`}
                           className="text-primary-600 hover:text-primary-700 text-xs font-medium"
                         >
-                          View
+                          ดูรายละเอียด
                         </Link>
                       </td>
                     </tr>
@@ -726,7 +717,7 @@ export default function ReceivingPage() {
           {!loading && totalPages > 1 && (
             <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50">
               <span className="text-xs text-gray-500">
-                Page {page} of {totalPages}
+                หน้า {page} จาก {totalPages}
               </span>
               <div className="flex gap-2">
                 <button
@@ -734,14 +725,14 @@ export default function ReceivingPage() {
                   onClick={() => setPage((p) => p - 1)}
                   className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
                 >
-                  Previous
+                  ก่อนหน้า
                 </button>
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                   className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
                 >
-                  Next
+                  ถัดไป
                 </button>
               </div>
             </div>
@@ -753,7 +744,7 @@ export default function ReceivingPage() {
       <FormModal
         open={showNewModal}
         onClose={() => setShowNewModal(false)}
-        title="New Delivery Note (GRN)"
+        title="สร้างใบรับสินค้า (GRN)"
         maxWidth="max-w-2xl"
       >
         <NewGrnForm
