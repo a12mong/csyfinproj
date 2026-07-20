@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
+import { installmentStatusLabel, isAdvancePartial } from "@/lib/format";
 import type {
   Customer,
   SaleWithInstallments,
@@ -288,12 +289,13 @@ export default function CustomerFinancePage() {
                                   <td className="px-5 py-3 text-center">
                                     <span
                                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                        STATUS_STYLES[inst.status] ??
-                                        "bg-gray-100 text-gray-500"
+                                        isAdvancePartial(inst.status, inst.dueDate)
+                                          ? "bg-sky-50 text-sky-700"
+                                          : STATUS_STYLES[inst.status] ??
+                                            "bg-gray-100 text-gray-500"
                                       }`}
                                     >
-                                      {STATUS_LABELS[inst.status] ??
-                                        inst.status}
+                                      {installmentStatusLabel(inst.status, inst.dueDate)}
                                     </span>
                                   </td>
                                   <td className="px-5 py-3 text-right">

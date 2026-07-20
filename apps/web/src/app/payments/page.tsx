@@ -17,6 +17,12 @@ import type {
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+// Slip images are served by the API host, not the web host
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+
+function slipUrl(pathOrUrl: string): string {
+  return pathOrUrl.startsWith("http") ? pathOrUrl : `${API_ORIGIN}${pathOrUrl}`;
+}
 
 type ReferenceType = "customer" | "installment" | "contract" | "sale";
 
@@ -42,7 +48,7 @@ interface InstallmentWithRefs extends Installment {
 }
 type VerifiedFilter = "all" | "pending" | "verified";
 
-import { formatPrice, formatDate, TH } from "@/lib/format";
+import { formatPrice, formatDate, TH, isAdvancePartial } from "@/lib/format";
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -123,6 +129,17 @@ function PaymentsContent() {
   const [verifyLoading, setVerifyLoading] = useState(true);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [slipPopupUrl, setSlipPopupUrl] = useState<string | null>(null);
+
+  // Close the slip popup with ESC
+  useEffect(() => {
+    if (!slipPopupUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSlipPopupUrl(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [slipPopupUrl]);
 
   // Load open (unpaid/partial) installments for dropdown (installment reference mode)
   const fetchInstallments = useCallback(async () => {
@@ -363,7 +380,7 @@ function PaymentsContent() {
 
     if (refType === "customer") {
       if (!selectedCustomer || !custContractId) {
-        setSubmitError("กรุณาค้นหาลูกค้าและเลือกสัญญาก่อน (Select a customer and contract first.)");
+        setSubmitError("กรุณาค้นหาลูกค้าและเลือกสัญญาก่อน");
         return;
       }
       formData.append("contract_id", custContractId);
@@ -372,13 +389,13 @@ function PaymentsContent() {
       }
     } else if (refType === "installment") {
       if (!installmentId) {
-        setSubmitError("Please select an installment.");
+        setSubmitError("กรุณาเลือกงวดที่ต้องการชำระ");
         return;
       }
       formData.append("installment_id", installmentId);
     } else if (refType === "contract") {
       if (!foundContract) {
-        setSubmitError("Please search and select a contract first.");
+        setSubmitError("กรุณาค้นหาและเลือกสัญญาก่อน");
         return;
       }
       formData.append("contract_id", foundContract.id);
@@ -387,7 +404,7 @@ function PaymentsContent() {
       }
     } else {
       if (!saleContract) {
-        setSubmitError("Please search and select a sale/PO first.");
+        setSubmitError("กรุณาค้นหาและเลือกรายการขายก่อน");
         return;
       }
       formData.append("contract_id", saleContract.id);
@@ -397,7 +414,7 @@ function PaymentsContent() {
     }
 
     if (!amount || !paymentDate) {
-      setSubmitError("Amount and date are required.");
+      setSubmitError("กรุณาระบุจำนวนเงินและวันที่");
       return;
     }
 
@@ -458,7 +475,7 @@ function PaymentsContent() {
   const selectedInstallment = installments.find((i) => i.id === installmentId);
 
   return (
-    <div className="px-8 py-8 space-y-8">
+    <div className="px-8 py-6 space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">รับชำระค่างวดและตรวจสอบสลิป</h1>
@@ -577,7 +594,7 @@ function PaymentsContent() {
                       <p className="text-xs text-gray-400">กำลังโหลดสัญญา…</p>
                     ) : customerContracts.length === 0 ? (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                        ลูกค้ารายนี้ไม่มีสัญญาที่กำลังผ่อนอยู่ (no active contracts)
+                        ลูกค้ารายนี้ไม่มีสัญญาที่กำลังผ่อนอยู่
                       </div>
                     ) : (
                       <div>
@@ -630,30 +647,54 @@ function PaymentsContent() {
                       ) : (
                         <div className="space-y-2">
                           {(() => {
+                            // มาตรฐาน: เทียบวันครบกำหนดกับวันนี้ —
+                            // ครบกำหนดแล้ว = ยอดคงค้าง, ยังไม่ครบกำหนด = ชำระล่วงหน้า
+                            const now = Date.now();
                             const carried = custInstallments.filter(
-                              (i) =>
-                                i.status === "partially_paid" ||
-                                new Date(i.dueDate) < new Date()
+                              (i) => new Date(i.dueDate).getTime() <= now
                             );
-                            if (carried.length === 0) return null;
-                            const carriedTotal = carried.reduce(
-                              (s, i) => s + (i.amountDue - i.amountPaid),
-                              0
+                            const advance = custInstallments.filter(
+                              (i) => isAdvancePartial(i.status, i.dueDate)
                             );
                             return (
-                              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                                ⚠ ลูกค้ามียอดค้างจากงวดก่อนหน้า{" "}
-                                <strong>{formatPrice(carriedTotal)}</strong> (
-                                {carried
-                                  .map(
-                                    (i) =>
-                                      `งวดที่ ${i.installmentNumber}${
-                                        i.status === "partially_paid" ? " ชำระบางส่วน" : ""
-                                      } ค้าง ${formatPrice(i.amountDue - i.amountPaid)}`
-                                  )
-                                  .join(" · ")}
-                                ) — เลือกได้ว่าจะตัดยอดงวดค้างก่อน หรือตัดงวดปัจจุบัน
-                              </div>
+                              <>
+                                {carried.length > 0 && (
+                                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                                    ⚠ ลูกค้ามียอดคงค้างที่ถึงกำหนดแล้ว{" "}
+                                    <strong>
+                                      {formatPrice(
+                                        carried.reduce(
+                                          (s, i) => s + (i.amountDue - i.amountPaid),
+                                          0
+                                        )
+                                      )}
+                                    </strong>{" "}
+                                    (
+                                    {carried
+                                      .map(
+                                        (i) =>
+                                          `งวดที่ ${i.installmentNumber}${
+                                            i.status === "partially_paid"
+                                              ? " ค้างบางส่วน"
+                                              : ""
+                                          } ค้าง ${formatPrice(i.amountDue - i.amountPaid)}`
+                                      )
+                                      .join(" · ")}
+                                    ) — เลือกได้ว่าจะตัดยอดงวดค้างก่อน หรือตัดงวดปัจจุบัน
+                                  </div>
+                                )}
+                                {advance.length > 0 && (
+                                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+                                    ℹ ลูกค้าชำระล่วงหน้าไว้แล้ว:{" "}
+                                    {advance
+                                      .map(
+                                        (i) =>
+                                          `งวดที่ ${i.installmentNumber} จ่ายแล้ว ${formatPrice(i.amountPaid)} (คงเหลือ ${formatPrice(i.amountDue - i.amountPaid)})`
+                                      )
+                                      .join(" · ")}
+                                  </div>
+                                )}
+                              </>
                             );
                           })()}
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -677,7 +718,11 @@ function PaymentsContent() {
                                 งวดที่ {inst.installmentNumber} — ครบกำหนด{" "}
                                 {formatDate(inst.dueDate)} — ค้าง{" "}
                                 {formatPrice(inst.amountDue - inst.amountPaid)}
-                                {inst.status === "partially_paid" ? " · ชำระบางส่วนแล้ว" : ""}
+                                {inst.status === "partially_paid"
+                                  ? isAdvancePartial(inst.status, inst.dueDate)
+                                    ? " · ชำระล่วงหน้าแล้ว"
+                                    : " · ค้างบางส่วน"
+                                  : ""}
                                 {new Date(inst.dueDate) < new Date() ? " ⚠ เกินกำหนด" : ""}
                               </option>
                             ))}
@@ -736,7 +781,7 @@ function PaymentsContent() {
                     </span>{" "}
                     &middot; สถานะ:{" "}
                     <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         STATUS_STYLES[selectedInstallment.status] ?? "bg-gray-100 text-gray-500"
                       }`}
                     >
@@ -757,7 +802,7 @@ function PaymentsContent() {
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="e.g. CTR-202601-001"
+                      placeholder="เช่น CTR-202601-001"
                       value={contractSearch}
                       onChange={(e) => setContractSearch(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleContractSearch())}
@@ -1010,7 +1055,7 @@ function PaymentsContent() {
                   type="date"
                   value={ledgerDate}
                   onChange={(e) => setLedgerDate(e.target.value)}
-                  className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:border-primary-500 focus:outline-none"
+                  className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 />
                 <button
                   onClick={() => fetchPayments(filterVerified, ledgerDate)}
@@ -1028,7 +1073,7 @@ function PaymentsContent() {
                   key={tab}
                   type="button"
                   onClick={() => setFilterVerified(tab)}
-                  className={`flex-1 py-1 text-xs font-semibold rounded-md transition-colors capitalize ${
+                  className={`flex-1 py-1 text-xs font-semibold rounded-md transition-colors ${
                     filterVerified === tab
                       ? "bg-white text-gray-900 shadow-sm"
                       : "text-gray-500 hover:text-gray-900"
@@ -1076,8 +1121,8 @@ function PaymentsContent() {
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                               payment.verified
-                                ? "bg-green-50 text-green-700 border border-green-200"
-                                : "bg-amber-50 text-amber-700 border border-amber-200 animate-pulse"
+                                ? "bg-green-50 text-green-700"
+                                : "bg-amber-50 text-amber-700"
                             }`}
                           >
                             {payment.verified ? "ตรวจสอบแล้ว" : "รออนุมัติ"}
@@ -1103,19 +1148,19 @@ function PaymentsContent() {
 
                         {payment.slipImageUrl && (
                           <div className="mt-2">
-                            <a
-                              href={payment.slipImageUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-block hover:opacity-80 transition-opacity"
+                            <button
+                              type="button"
+                              onClick={() => setSlipPopupUrl(slipUrl(payment.slipImageUrl!))}
+                              className="inline-block hover:opacity-80 transition-opacity cursor-zoom-in"
+                              title="คลิกเพื่อดูรูปขนาดใหญ่"
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={payment.slipImageUrl}
-                                alt="Slip"
+                                src={slipUrl(payment.slipImageUrl)}
+                                alt="สลิปโอนเงิน"
                                 className="h-16 rounded border border-gray-200 object-contain"
                               />
-                            </a>
+                            </button>
                           </div>
                         )}
 
@@ -1169,6 +1214,34 @@ function PaymentsContent() {
           </div>
         </div>
       </div>
+
+      {/* Slip image popup */}
+      {slipPopupUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-6"
+          onClick={() => setSlipPopupUrl(null)}
+        >
+          <div
+            className="relative max-w-3xl max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setSlipPopupUrl(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-gray-700 shadow-lg text-lg font-bold flex items-center justify-center hover:bg-gray-100"
+              aria-label="ปิด"
+            >
+              ×
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={slipPopupUrl}
+              alt="สลิปโอนเงิน"
+              className="max-h-[85vh] max-w-full rounded-lg shadow-2xl object-contain bg-white"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1178,7 +1251,7 @@ export default function PaymentsPage() {
     <DashboardLayout>
       <Suspense
         fallback={
-          <div className="px-8 py-8">
+          <div className="px-8 py-6">
             <div className="h-8 w-48 bg-gray-100 rounded animate-pulse mb-4" />
             <div className="h-64 bg-gray-100 rounded-xl animate-pulse" />
           </div>

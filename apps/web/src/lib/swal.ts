@@ -16,14 +16,14 @@ const base = Swal.mixin({
 
 // ─── Delete confirmation ──────────────────────────────────────────────────────
 
-export async function confirmDelete(itemName = "this item"): Promise<boolean> {
+export async function confirmDelete(itemName = "รายการนี้"): Promise<boolean> {
   const result = await base.fire({
-    title: "Are you sure?",
-    text: `"${itemName}" will be permanently deleted.`,
+    title: "ยืนยันการลบ?",
+    text: `"${itemName}" จะถูกลบอย่างถาวร`,
     icon: "warning",
     showCancelButton: true,
-    confirmButtonText: "Yes, delete it",
-    cancelButtonText: "Cancel",
+    confirmButtonText: "ลบ",
+    cancelButtonText: "ยกเลิก",
     confirmButtonColor: "#dc2626", // red-600
     reverseButtons: true,
   });
@@ -46,8 +46,8 @@ export async function confirm(options: {
     html: options.html,
     icon: options.icon ?? "question",
     showCancelButton: true,
-    confirmButtonText: options.confirmText ?? "Confirm",
-    cancelButtonText: options.cancelText ?? "Cancel",
+    confirmButtonText: options.confirmText ?? "ยืนยัน",
+    cancelButtonText: options.cancelText ?? "ยกเลิก",
     reverseButtons: true,
     width: options.html ? "42em" : undefined,
   });
@@ -75,10 +75,10 @@ export function toastSuccess(message: string): void {
 
 export function alertError(message: string): void {
   base.fire({
-    title: "Error",
+    title: "เกิดข้อผิดพลาด",
     text: message,
     icon: "error",
-    confirmButtonText: "OK",
+    confirmButtonText: "ตกลง",
   });
 }
 
@@ -89,6 +89,6 @@ export function alertInfo(title: string, text?: string): void {
     title,
     text,
     icon: "info",
-    confirmButtonText: "OK",
+    confirmButtonText: "ตกลง",
   });
 }

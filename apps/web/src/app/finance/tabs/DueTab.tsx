@@ -139,8 +139,14 @@ export default function DueTab({
           </p>
           {data && data.summary.partial_count > 0 && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-700">
-              ⚠ ชำระบางส่วนค้าง {data.summary.partial_count} งวด รวม{" "}
-              {formatPrice(data.summary.partial_amount)}
+              ⚠ ค้างชำระบางส่วน {data.summary.partial_count} งวด รวม{" "}
+              {formatPrice(data.summary.partial_amount)} — ควรติดตาม
+            </span>
+          )}
+          {data && data.summary.advance_count > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-700">
+              ℹ ชำระล่วงหน้า {data.summary.advance_count} งวด (คงเหลือ{" "}
+              {formatPrice(data.summary.advance_amount)})
             </span>
           )}
         </div>
@@ -272,11 +278,16 @@ export default function DueTab({
                       >
                         {badge.label}
                       </span>
-                      {item.status === "partially_paid" && (
-                        <span className="block mt-1 mx-auto w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">
-                          ชำระบางส่วน
-                        </span>
-                      )}
+                      {item.status === "partially_paid" &&
+                        (item.bucket === "upcoming" ? (
+                          <span className="block mt-1 mx-auto w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700">
+                            ชำระล่วงหน้าบางส่วน
+                          </span>
+                        ) : (
+                          <span className="block mt-1 mx-auto w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">
+                            ค้างชำระบางส่วน
+                          </span>
+                        ))}
                     </td>
                   </tr>
                 );

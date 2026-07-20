@@ -56,8 +56,8 @@ const STATUS_STYLES: Record<string, string> = {
 
 const MOTO_STATUS_STYLES: Record<string, string> = {
   in_stock: "bg-green-50 text-green-700",
-  reserved: "bg-blue-50 text-blue-700",
-  sold: "bg-gray-100 text-gray-500",
+  reserved: "bg-yellow-50 text-yellow-700",
+  sold: "bg-red-50 text-red-700",
 };
 
 const ITEM_TYPE_STYLES: Record<string, string> = {
@@ -165,18 +165,18 @@ export default function ReceivingDetailPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="px-8 py-8">
+        <div className="px-8 py-6 max-w-5xl">
           <div className="h-5 w-40 bg-gray-100 rounded animate-pulse mb-6" />
           <div className="h-8 w-64 bg-gray-100 rounded animate-pulse mb-4" />
           <div className="grid grid-cols-4 gap-4 mb-6">
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="bg-white rounded-xl border border-gray-200 p-4 h-16 animate-pulse"
+                className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 h-16 animate-pulse"
               />
             ))}
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="h-5 bg-gray-100 rounded animate-pulse" />
             ))}
@@ -191,7 +191,7 @@ export default function ReceivingDetailPage() {
   if (error || !note) {
     return (
       <DashboardLayout>
-        <div className="px-8 py-8">
+        <div className="px-8 py-6 max-w-5xl">
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mb-4">
             {error ?? "ไม่พบใบรับสินค้า"}
           </div>
@@ -214,10 +214,10 @@ export default function ReceivingDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8">
+      <div className="px-8 py-6 max-w-5xl">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-gray-500 mb-5">
-          <Link href="/receiving" className="hover:text-primary-600">
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
+          <Link href="/receiving" className="hover:text-gray-700 transition-colors">
             รับสินค้าเข้า
           </Link>
           <span>/</span>
@@ -232,7 +232,7 @@ export default function ReceivingDetailPage() {
                 {note.note_number}
               </h1>
               <span
-                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                   STATUS_STYLES[note.status] ?? "bg-gray-100 text-gray-500"
                 }`}
               >
@@ -278,7 +278,7 @@ export default function ReceivingDetailPage() {
           ].map((card) => (
             <div
               key={card.label}
-              className="bg-white rounded-xl border border-gray-200 px-4 py-3"
+              className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3"
             >
               <p className="text-xs text-gray-500">{card.label}</p>
               <p className="text-sm font-semibold text-gray-900 mt-0.5">
@@ -290,14 +290,14 @@ export default function ReceivingDetailPage() {
 
         {/* Notes */}
         {note.notes && (
-          <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 mb-6">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 mb-6">
             <p className="text-xs text-gray-500 mb-1">หมายเหตุ</p>
             <p className="text-sm text-gray-700">{note.notes}</p>
           </div>
         )}
 
         {/* Items */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-900">
               รายการที่รับเข้า
@@ -312,7 +312,7 @@ export default function ReceivingDetailPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-gray-400">#{idx + 1}</span>
                     <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         ITEM_TYPE_STYLES[item.item_type] ??
                         "bg-gray-100 text-gray-600"
                       }`}
@@ -362,7 +362,7 @@ export default function ReceivingDetailPage() {
                           {item.motorcycles.map((moto) => (
                             <tr
                               key={moto.id}
-                              className="border-b border-gray-50 last:border-0"
+                              className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
                             >
                               <td className="px-3 py-2 text-gray-700">
                                 {moto.model} {moto.year}
@@ -404,7 +404,7 @@ export default function ReceivingDetailPage() {
                 {/* Motorcycle item with no records yet */}
                 {item.item_type === "motorcycle" &&
                   item.motorcycles.length === 0 && (
-                    <p className="mt-2 text-xs text-gray-400 italic">
+                    <p className="mt-2 text-xs text-gray-400">
                       ยังไม่มีข้อมูลรถที่เชื่อมโยง
                     </p>
                   )}

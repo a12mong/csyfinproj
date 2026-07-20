@@ -197,7 +197,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
             value={noteNumber}
             onChange={(e) => setNoteNumber(e.target.value)}
             placeholder="GRN-2024-001"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
         </div>
         <div>
@@ -209,7 +209,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
             type="date"
             value={receivedDate}
             onChange={(e) => setReceivedDate(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
         </div>
       </div>
@@ -224,7 +224,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
           value={supplierName}
           onChange={(e) => setSupplierName(e.target.value)}
           placeholder="Yamaha Motor Thailand"
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
         />
       </div>
 
@@ -236,7 +236,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
           rows={2}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
           placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)…"
         />
       </div>
@@ -290,7 +290,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                         item_type: e.target.value as ItemRow["item_type"],
                       })
                     }
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   >
                     <option value="motorcycle">รถจักรยานยนต์</option>
                     <option value="part">อะไหล่</option>
@@ -313,7 +313,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                         ? "NMAX 155 2024"
                         : "รายละเอียดสินค้า"
                     }
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   />
                 </div>
               </div>
@@ -331,7 +331,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                     onChange={(e) =>
                       updateItem(item.localId, { quantity: e.target.value })
                     }
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   />
                 </div>
                 <div>
@@ -348,7 +348,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                       updateItem(item.localId, { unit_cost: e.target.value })
                     }
                     placeholder="85000"
-                    className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   />
                 </div>
                 {item.item_type === "motorcycle" ? (
@@ -367,7 +367,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                         })
                       }
                       placeholder="95000"
-                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                     />
                   </div>
                 ) : (
@@ -389,7 +389,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                           updateItem(item.localId, { color: e.target.value })
                         }
                         placeholder="เช่น ดำด้าน"
-                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       />
                     </div>
                     <div>
@@ -404,7 +404,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                         onChange={(e) =>
                           updateItem(item.localId, { year: e.target.value })
                         }
-                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none"
+                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       />
                     </div>
                   </div>
@@ -428,7 +428,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                           })
                         }
                         placeholder={"CHASSIS001\nCHASSIS002"}
-                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none resize-none font-mono"
+                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none font-mono"
                       />
                     </div>
                     <div>
@@ -449,7 +449,7 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
                           })
                         }
                         placeholder={"ENGINE001\nENGINE002"}
-                        className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none resize-none font-mono"
+                        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none font-mono"
                       />
                     </div>
                   </div>
@@ -461,23 +461,23 @@ function NewGrnForm({ onSuccess, onCancel }: NewGrnFormProps) {
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      <div className="flex gap-3 pt-2 border-t border-gray-100">
+      <div className="flex gap-2 pt-2 border-t border-gray-100">
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
           ยกเลิก
         </button>
         <button
           type="submit"
           disabled={submitting}
-          className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+          className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
           {submitting ? "กำลังสร้าง…" : "สร้างใบรับสินค้า"}
         </button>
@@ -544,7 +544,7 @@ export default function ReceivingPage() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8">
+      <div className="px-8 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -557,7 +557,7 @@ export default function ReceivingPage() {
           </div>
           <button
             onClick={() => setShowNewModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm"
           >
             <span>+</span> สร้างใบรับสินค้า
           </button>
@@ -599,7 +599,7 @@ export default function ReceivingPage() {
                 setDateFrom(e.target.value);
                 setPage(1);
               }}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white shadow-sm focus:border-primary-500 focus:outline-none"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             />
             <span className="text-sm text-gray-400">–</span>
             <input
@@ -609,7 +609,7 @@ export default function ReceivingPage() {
                 setDateTo(e.target.value);
                 setPage(1);
               }}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white shadow-sm focus:border-primary-500 focus:outline-none"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             />
           </div>
         </div>
@@ -621,7 +621,7 @@ export default function ReceivingPage() {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -690,7 +690,7 @@ export default function ReceivingPage() {
                       </td>
                       <td className="px-5 py-3">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             STATUS_STYLES[note.status] ??
                             "bg-gray-100 text-gray-500"
                           }`}
@@ -723,14 +723,14 @@ export default function ReceivingPage() {
                 <button
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
+                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                 >
                   ก่อนหน้า
                 </button>
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
+                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                 >
                   ถัดไป
                 </button>

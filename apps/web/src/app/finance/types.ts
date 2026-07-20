@@ -82,6 +82,8 @@ export interface UpcomingDue {
     upcoming_amount: number;
     partial_count: number;
     partial_amount: number;
+    advance_count: number;
+    advance_amount: number;
   };
 }
 

@@ -117,7 +117,7 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
       </label>
 
       {submitError && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {submitError}
         </div>
       )}
@@ -130,7 +130,7 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
           type="text"
           value={form.name}
           onChange={(e) => set("name", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           placeholder="สมชาย ใจดี"
         />
         <FieldError message={errors.name} />
@@ -144,7 +144,7 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
           type="tel"
           value={form.phone}
           onChange={(e) => set("phone", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           placeholder="081-234-5678"
         />
         <FieldError message={errors.phone} />
@@ -158,7 +158,7 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
           type="text"
           value={form.id_card_number}
           onChange={(e) => set("id_card_number", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           placeholder="1234567890123"
           maxLength={13}
         />
@@ -172,7 +172,7 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
             type="email"
             value={form.email}
             onChange={(e) => set("email", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             placeholder="somchai@example.com"
           />
         </div>
@@ -182,7 +182,7 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
             type="text"
             value={form.line_id}
             onChange={(e) => set("line_id", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             placeholder="@somchai"
           />
         </div>
@@ -194,25 +194,25 @@ function AddCustomerForm({ onSuccess, onCancel }: AddCustomerFormProps) {
           rows={2}
           value={form.address}
           onChange={(e) => set("address", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
           placeholder="123 หมู่ 4 ตำบล…"
         />
       </div>
 
       <div className="flex gap-3 pt-2">
         <button
-          type="submit"
-          disabled={submitting}
-          className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-        >
-          {submitting ? "กำลังเพิ่ม…" : "เพิ่มลูกค้า"}
-        </button>
-        <button
           type="button"
           onClick={onCancel}
           className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
           ยกเลิก
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+        >
+          {submitting ? "กำลังเพิ่ม…" : "เพิ่มลูกค้า"}
         </button>
       </div>
     </form>
@@ -276,7 +276,7 @@ export default function CustomersPage() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8">
+      <div className="px-8 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -287,7 +287,7 @@ export default function CustomersPage() {
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm"
           >
             <span>+</span> เพิ่มลูกค้า
           </button>
@@ -311,7 +311,7 @@ export default function CustomersPage() {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -392,14 +392,14 @@ export default function CustomersPage() {
                 <button
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
+                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                 >
                   ก่อนหน้า
                 </button>
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
+                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                 >
                   ถัดไป
                 </button>

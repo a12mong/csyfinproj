@@ -26,7 +26,7 @@ const CUSTOMER_TYPE_BADGE: Record<string, { label: string; className: string }> 
 function CustomerTypeBadge({ type }: { type: string }) {
   const style = CUSTOMER_TYPE_BADGE[type] ?? { label: type, className: "bg-gray-100 text-gray-600" };
   return (
-    <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${style.className}`}>
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${style.className}`}>
       {style.label}
     </span>
   );
@@ -390,7 +390,7 @@ function StepTerms({
             value={form.total_principal}
             onChange={(e) => set("total_principal", e.target.value)}
             placeholder={suggestedPrincipal > 0 ? String(suggestedPrincipal) : "เช่น 50000"}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
           {errors.total_principal && (
             <p className="mt-1 text-xs text-red-600">{errors.total_principal}</p>
@@ -407,7 +407,7 @@ function StepTerms({
             value={form.interest_rate}
             onChange={(e) => set("interest_rate", e.target.value)}
             placeholder="0"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
         </div>
       </div>
@@ -424,7 +424,7 @@ function StepTerms({
             value={form.num_installments}
             onChange={(e) => set("num_installments", e.target.value)}
             placeholder="12"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
           {errors.num_installments && (
             <p className="mt-1 text-xs text-red-600">{errors.num_installments}</p>
@@ -438,7 +438,7 @@ function StepTerms({
             type="date"
             value={form.start_date}
             onChange={(e) => set("start_date", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
           {errors.start_date && (
             <p className="mt-1 text-xs text-red-600">{errors.start_date}</p>
@@ -475,7 +475,7 @@ function StepTerms({
           rows={2}
           value={form.notes}
           onChange={(e) => set("notes", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
           placeholder="หมายเหตุเพิ่มเติม (ไม่บังคับ)…"
         />
       </div>
@@ -783,7 +783,7 @@ function NewContractForm({
       )}
 
       {submitError && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {submitError}
         </div>
       )}
@@ -793,7 +793,7 @@ function NewContractForm({
           <button
             type="button"
             onClick={() => setStep((s) => s - 1)}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             ย้อนกลับ
           </button>
@@ -801,7 +801,7 @@ function NewContractForm({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             ยกเลิก
           </button>
@@ -812,7 +812,7 @@ function NewContractForm({
             type="button"
             onClick={handleNext}
             disabled={!canAdvance}
-            className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
             ถัดไป
           </button>
@@ -820,7 +820,7 @@ function NewContractForm({
           <button
             type="submit"
             disabled={submitting}
-            className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
             {submitting ? "กำลังสร้าง…" : "ยืนยันสร้างสัญญา"}
           </button>
@@ -900,7 +900,7 @@ function ContractsPageContent() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8">
+      <div className="px-8 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -911,7 +911,7 @@ function ContractsPageContent() {
           </div>
           <button
             onClick={() => setShowNewModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm"
           >
             <span>+</span> สร้างสัญญา
           </button>
@@ -946,7 +946,7 @@ function ContractsPageContent() {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -1001,7 +1001,7 @@ function ContractsPageContent() {
                       </td>
                       <td className="px-5 py-3">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             CONTRACT_STATUS_STYLES[contract.status] ?? "bg-gray-100 text-gray-500"
                           }`}
                         >
@@ -1039,14 +1039,14 @@ function ContractsPageContent() {
                 <button
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
+                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                 >
                   ก่อนหน้า
                 </button>
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
+                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                 >
                   ถัดไป
                 </button>
@@ -1079,8 +1079,9 @@ export default function ContractsPage() {
     <Suspense
       fallback={
         <DashboardLayout>
-          <div className="px-8 py-8 animate-pulse text-gray-500">
-            กำลังโหลด...
+          <div className="px-8 py-6">
+            <div className="h-8 w-48 bg-gray-100 rounded animate-pulse mb-6" />
+            <div className="h-64 bg-gray-100 rounded-xl animate-pulse" />
           </div>
         </DashboardLayout>
       }

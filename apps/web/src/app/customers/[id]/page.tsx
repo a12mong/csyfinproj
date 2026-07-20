@@ -7,6 +7,9 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
 import { confirm as swalConfirm, toastSuccess, alertError } from "@/lib/swal";
 import { useAuth } from "@/contexts/AuthContext";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 import { formatPrice, formatDate, TH } from "@/lib/format";
 import type { CustomerWithDebtSummary, Sale, PaginatedResponse } from "@csyfinproj/shared";
 
@@ -18,7 +21,37 @@ const SALE_STATUS_STYLES: Record<string, string> = {
 };
 
 export default function CustomerDetailPage() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, hasPermission } = useAuth();
+  const canEditCustomer = hasPermission("customers", "canEdit");
+
+  // Identity documents (PDPA-protected, blurred server-side without permission)
+  const [docVersion, setDocVersion] = useState(0);
+  const [docMissing, setDocMissing] = useState<Record<string, boolean>>({});
+  const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+
+  async function handleDocUpload(type: "id_card" | "selfie", file: File) {
+    setUploadingDoc(type);
+    try {
+      const fd = new FormData();
+      fd.append(type === "id_card" ? "id_card_image" : "id_card_selfie", file);
+      const res = await fetch(`${API_BASE_URL}/customers/${params.id}/documents`, {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || res.statusText);
+      }
+      toastSuccess("อัปโหลดรูปเรียบร้อยแล้ว");
+      setDocMissing((prev) => ({ ...prev, [type]: false }));
+      setDocVersion((v) => v + 1);
+    } catch (err) {
+      alertError(err instanceof Error ? err.message : "อัปโหลดรูปไม่สำเร็จ");
+    } finally {
+      setUploadingDoc(null);
+    }
+  }
   const params = useParams<{ id: string }>();
 
   async function handleAnonymize() {
@@ -137,7 +170,11 @@ export default function CustomerDetailPage() {
   }, [customer?.isLineLinked, params.id]);
 
   async function handleUnlink() {
-    if (!confirm("ต้องการยกเลิกการเชื่อมต่อบัญชี LINE ของลูกค้ารายนี้ใช่หรือไม่?")) {
+    const ok = await swalConfirm({
+      title: "ต้องการยกเลิกการเชื่อมต่อบัญชี LINE ของลูกค้ารายนี้ใช่หรือไม่?",
+      icon: "warning",
+    });
+    if (!ok) {
       return;
     }
     setUnlinking(true);
@@ -154,7 +191,7 @@ export default function CustomerDetailPage() {
           : null
       );
     } catch (err) {
-      alert(err instanceof Error ? err.message : "ไม่สามารถยกเลิกการเชื่อมต่อบัญชี LINE ได้");
+      alertError(err instanceof Error ? err.message : "ไม่สามารถยกเลิกการเชื่อมต่อบัญชี LINE ได้");
     } finally {
       setUnlinking(false);
     }
@@ -180,7 +217,7 @@ export default function CustomerDetailPage() {
       <DashboardLayout>
         <div className="px-8 py-8">
           <div className="h-8 w-48 bg-gray-100 rounded animate-pulse mb-4" />
-          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" />
             ))}
@@ -210,10 +247,10 @@ export default function CustomerDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8 max-w-3xl">
+      <div className="px-8 py-6 max-w-3xl">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
-          <Link href="/customers" className="hover:text-gray-700">
+          <Link href="/customers" className="hover:text-gray-700 transition-colors">
             ลูกค้า
           </Link>
           <span>/</span>
@@ -228,7 +265,7 @@ export default function CustomerDetailPage() {
           </div>
           <Link
             href={`/sales?open=new&customer_id=${customer.id}`}
-            className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+            className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
           >
             + สร้างรายการขาย
           </Link>
@@ -236,19 +273,19 @@ export default function CustomerDetailPage() {
 
         {/* Debt Summary Cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <p className="text-xs text-gray-500 mb-1">ยอดหนี้รวม</p>
             <p className="text-xl font-bold text-gray-900">
               {formatPrice(customer.totalDebt)}
             </p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <p className="text-xs text-gray-500 mb-1">ยอดที่ชำระแล้ว</p>
             <p className="text-xl font-bold text-green-600">
               {formatPrice(customer.paidAmount)}
             </p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <p className="text-xs text-gray-500 mb-1">เกินกำหนด</p>
             <p className={`text-xl font-bold ${customer.overdueCount > 0 ? "text-red-600" : "text-gray-900"}`}>
               {customer.overdueCount} งวด
@@ -257,7 +294,7 @@ export default function CustomerDetailPage() {
         </div>
 
         {/* Customer Info */}
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 mb-6">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100 mb-6">
           {[
             { label: "ชื่อ-นามสกุล", value: customer.name },
             { label: "เบอร์โทรศัพท์", value: customer.phone },
@@ -273,8 +310,62 @@ export default function CustomerDetailPage() {
           ))}
         </div>
 
+        {/* Identity documents (PDPA) */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-base font-semibold text-gray-900">เอกสารยืนยันตัวตน</h2>
+            <span className="text-[11px] text-gray-400">
+              🔒 เบลออัตโนมัติหากไม่มีสิทธิ์ดูข้อมูลส่วนบุคคล (PDPA)
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mb-4">
+            รูปบัตรประชาชน และรูปถ่ายลูกค้าคู่กับบัตรประชาชน
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {(
+              [
+                { type: "id_card" as const, label: "รูปบัตรประชาชน" },
+                { type: "selfie" as const, label: "รูปถ่ายคู่บัตรประชาชน" },
+              ]
+            ).map(({ type, label }) => (
+              <div key={type} className="border border-gray-200 rounded-lg p-3">
+                <p className="text-xs font-medium text-gray-600 mb-2">{label}</p>
+                {docMissing[type] ? (
+                  <div className="h-40 flex items-center justify-center bg-gray-50 rounded-lg text-xs text-gray-400">
+                    ยังไม่มีรูป
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`${API_BASE_URL}/customers/${params.id}/documents/${type}?v=${docVersion}`}
+                    alt={label}
+                    className="h-40 w-full object-contain bg-gray-50 rounded-lg"
+                    onError={() => setDocMissing((prev) => ({ ...prev, [type]: true }))}
+                  />
+                )}
+                {canEditCustomer && (
+                  <label className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      className="hidden"
+                      disabled={uploadingDoc !== null}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleDocUpload(type, f);
+                        e.target.value = "";
+                      }}
+                    />
+                    {uploadingDoc === type ? "กำลังอัปโหลด…" : "📷 อัปโหลด/เปลี่ยนรูป"}
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* LINE Connection Card */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6 animate-fadeIn">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6 animate-fadeIn">
           <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#06C755] text-white text-[10px] font-black">LINE</span>
             การเชื่อมต่อบัญชี LINE
@@ -298,7 +389,7 @@ export default function CustomerDetailPage() {
               <div className="flex-1 space-y-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-gray-800">เชื่อมต่อแล้ว</span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 animate-pulse">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
                     ใช้งานอยู่
                   </span>
                 </div>
@@ -319,7 +410,7 @@ export default function CustomerDetailPage() {
                   <button
                     onClick={handleSendGreeting}
                     disabled={sendingGreeting}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#06C755] hover:bg-[#05b04b] text-white text-xs font-bold rounded-lg transition-all shadow-sm disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#06C755] hover:bg-[#05b04b] text-white text-xs font-semibold rounded-lg transition-colors shadow-sm disabled:opacity-50"
                   >
                     💬 {sendingGreeting ? "กำลังส่ง..." : "ส่งข้อความทักทาย"}
                   </button>
@@ -428,7 +519,7 @@ export default function CustomerDetailPage() {
           </h2>
 
           {sales.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 px-5 py-10 text-center text-sm text-gray-400">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-10 text-center text-sm text-gray-400">
               ยังไม่มีรายการขาย{" "}
               <Link
                 href={`/sales?open=new&customer_id=${customer.id}`}
@@ -438,7 +529,7 @@ export default function CustomerDetailPage() {
               </Link>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
@@ -466,7 +557,7 @@ export default function CustomerDetailPage() {
                       <td className="px-5 py-3 text-gray-600">
                         {formatDate(sale.saleDate)}
                       </td>
-                      <td className="px-5 py-3 text-gray-600 capitalize">
+                      <td className="px-5 py-3 text-gray-600">
                         {TH.paymentMethod[sale.paymentMethod] ?? sale.paymentMethod}
                       </td>
                       <td className="px-5 py-3 text-right font-medium text-gray-900">
@@ -507,7 +598,7 @@ export default function CustomerDetailPage() {
           {authUser?.role === "admin" && (
             <button
               onClick={handleAnonymize}
-              className="text-xs text-red-500 hover:text-red-700 hover:underline"
+              className="text-xs text-red-600 hover:text-red-700 hover:underline"
             >
               ปกปิดข้อมูลลูกค้า (PDPA)
             </button>

@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
-import { formatPrice, formatDate, TH } from "@/lib/format";
+import { formatPrice, formatDate, TH, installmentStatusLabel, isAdvancePartial } from "@/lib/format";
 import type { SaleWithInstallments, Installment, Payment } from "@csyfinproj/shared";
 
 const API_BASE_URL =
@@ -14,20 +14,29 @@ const API_BASE_URL =
 // ─── installment status badge ─────────────────────────────────────────────────
 
 const INSTALLMENT_STATUS_STYLES: Record<Installment["status"], string> = {
-  pending: "bg-yellow-50 text-yellow-700 border border-yellow-200",
-  paid: "bg-green-50 text-green-700 border border-green-200",
-  overdue: "bg-red-50 text-red-700 border border-red-200",
-  partially_paid: "bg-orange-50 text-orange-700 border border-orange-200",
+  pending: "bg-yellow-50 text-yellow-700",
+  paid: "bg-green-50 text-green-700",
+  overdue: "bg-red-50 text-red-700",
+  partially_paid: "bg-orange-50 text-orange-700",
 };
 
-function InstallmentBadge({ status }: { status: Installment["status"] }) {
+function InstallmentBadge({
+  status,
+  dueDate,
+}: {
+  status: Installment["status"];
+  dueDate?: string;
+}) {
+  const advance = isAdvancePartial(status, dueDate);
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-        INSTALLMENT_STATUS_STYLES[status] ?? "bg-gray-100 text-gray-500"
+        advance
+          ? "bg-sky-50 text-sky-700"
+          : INSTALLMENT_STATUS_STYLES[status] ?? "bg-gray-100 text-gray-500"
       }`}
     >
-      {TH.installmentStatus[status] ?? status}
+      {installmentStatusLabel(status, dueDate)}
     </span>
   );
 }
@@ -116,10 +125,10 @@ export default function SaleDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8 max-w-3xl">
+      <div className="px-8 py-6 max-w-3xl">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
-          <Link href="/sales" className="hover:text-gray-700">
+          <Link href="/sales" className="hover:text-gray-700 transition-colors">
             รายการขาย
           </Link>
           <span>/</span>
@@ -140,7 +149,7 @@ export default function SaleDetailPage() {
                 {formatDate(sale.saleDate)}
               </span>
               <span
-                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                   SALE_STATUS_STYLES[sale.status] ?? "bg-gray-100 text-gray-500"
                 }`}
               >
@@ -173,11 +182,11 @@ export default function SaleDetailPage() {
         {(sale as any).linkedContract && (
           <div className="mb-6 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 flex items-center justify-between shadow-sm">
             <p className="text-sm text-emerald-800">
-              รายการขายนี้เชื่อมโยงกับสัญญาเช่าซื้อเลขที่: <strong>{(sale as any).linkedContract.contractNumber}</strong> (สถานะ: <span className="capitalize font-semibold">{TH.contractStatus[(sale as any).linkedContract.status] ?? (sale as any).linkedContract.status}</span>)
+              รายการขายนี้เชื่อมโยงกับสัญญาเช่าซื้อเลขที่: <strong>{(sale as any).linkedContract.contractNumber}</strong> (สถานะ: <span className="font-semibold">{TH.contractStatus[(sale as any).linkedContract.status] ?? (sale as any).linkedContract.status}</span>)
             </p>
             <Link
               href={`/contracts/${(sale as any).linkedContract.id}`}
-              className="text-xs font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition-colors border border-emerald-200"
+              className="text-xs font-semibold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg transition-colors border border-emerald-200"
             >
               ไปหน้าสัญญา →
             </Link>
@@ -186,13 +195,18 @@ export default function SaleDetailPage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <p className="text-xs text-gray-500 mb-1">ราคารวม</p>
             <p className="text-lg font-bold text-gray-900">
               {formatPrice(sale.totalPrice)}
             </p>
+            {Number((sale as unknown as { discountAmount?: number }).discountAmount) > 0 && (
+              <p className="text-xs text-green-700 mt-0.5">
+                ส่วนลด -{formatPrice(Number((sale as unknown as { discountAmount?: number }).discountAmount))}
+              </p>
+            )}
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <p className="text-xs text-gray-500 mb-1">เงินดาวน์</p>
             <p className="text-lg font-bold text-gray-900">
               {formatPrice(sale.downPayment)}
@@ -200,14 +214,14 @@ export default function SaleDetailPage() {
           </div>
           {!isCash && (
             <>
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
                 <p className="text-xs text-gray-500 mb-1">ยอดจัดไฟแนนซ์</p>
                 <p className="text-lg font-bold text-gray-900">
                   {formatPrice(sale.financeAmount)}
                 </p>
               </div>
               {isInstallment && (
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
                   <p className="text-xs text-gray-500 mb-1">คงเหลือ</p>
                   <p
                     className={`text-lg font-bold ${
@@ -225,7 +239,7 @@ export default function SaleDetailPage() {
         {/* Info sections */}
         <div className="grid sm:grid-cols-2 gap-4 mb-6">
           {/* Customer */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
               ลูกค้า
             </p>
@@ -245,7 +259,7 @@ export default function SaleDetailPage() {
           </div>
 
           {/* Motorcycle */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
               รถจักรยานยนต์
             </p>
@@ -263,12 +277,12 @@ export default function SaleDetailPage() {
         </div>
 
         {/* Sale details */}
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 mb-6">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100 mb-6">
           {[
             {
               label: "วิธีชำระเงิน",
               value: (
-                <span className="capitalize">
+                <span>
                   {TH.paymentMethod[sale.paymentMethod] ?? sale.paymentMethod}
                 </span>
               ),
@@ -327,7 +341,7 @@ export default function SaleDetailPage() {
             <h2 className="text-base font-semibold text-gray-900 mb-3">
               ตารางผ่อนชำระ
             </h2>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -430,7 +444,7 @@ export default function SaleDetailPage() {
                           </td>
                           <td className="px-5 py-3">
                             <div className="flex flex-col items-center">
-                              <InstallmentBadge status={installment.status} />
+                              <InstallmentBadge status={installment.status} dueDate={installment.dueDate} />
                               {installment.status === "partially_paid" && (
                                 <span className="text-[10px] text-orange-600 mt-1 font-semibold">
                                   ค้างจ่าย: {formatPrice(Number(installment.amountDue) - Number(installment.amountPaid))}
@@ -449,7 +463,7 @@ export default function SaleDetailPage() {
         )}
 
         {isInstallment && sale.installments.length === 0 && !(sale as any).linkedContract && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-6">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-5 mb-6">
             <h3 className="text-sm font-semibold text-yellow-800 mb-1">
               สัญญายังไม่ถูกสร้าง
             </h3>
@@ -471,7 +485,7 @@ export default function SaleDetailPage() {
             <h2 className="text-base font-semibold text-gray-900 mb-3">
               รายละเอียดของแถมและบริการเสริม
             </h2>
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -524,13 +538,13 @@ export default function SaleDetailPage() {
             <h2 className="text-base font-semibold text-gray-900 mb-3">
               พิมพ์ใบกำกับภาษี
             </h2>
-            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100 overflow-hidden">
               {sale.taxInvoices.map((inv: any) => (
                 <div key={inv.id} className="flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-semibold text-gray-900">📄 {inv.invoiceNumber}</span>
-                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize bg-gray-100 text-gray-600`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600`}>
                         {inv.type.replace("_", " ")}
                       </span>
                     </div>

@@ -128,7 +128,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       {submitError && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {submitError}
         </div>
       )}
@@ -140,7 +140,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
             type="text"
             value={form.brand}
             onChange={(e) => set("brand", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
             placeholder="Yamaha"
           />
           <FieldError message={errors.brand} />
@@ -153,7 +153,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
             type="text"
             value={form.model}
             onChange={(e) => set("model", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
             placeholder="NMAX 155"
           />
           <FieldError message={errors.model} />
@@ -169,7 +169,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
             type="number"
             value={form.year}
             onChange={(e) => set("year", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
             placeholder="2024"
             min={1900}
             max={2100}
@@ -184,7 +184,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
             type="text"
             value={form.color}
             onChange={(e) => set("color", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
             placeholder="เช่น ดำ"
           />
           <FieldError message={errors.color} />
@@ -199,7 +199,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
           type="text"
           value={form.chassis_number}
           onChange={(e) => set("chassis_number", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
           placeholder="SG5EJ-000001"
         />
         <FieldError message={errors.chassis_number} />
@@ -213,7 +213,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
           type="text"
           value={form.engine_number}
           onChange={(e) => set("engine_number", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
           placeholder="G3C9E-000001"
         />
         <FieldError message={errors.engine_number} />
@@ -228,7 +228,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
             type="number"
             value={form.cost_price}
             onChange={(e) => set("cost_price", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
             placeholder="70000"
             min={1}
             step={0.01}
@@ -243,7 +243,7 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
             type="number"
             value={form.selling_price}
             onChange={(e) => set("selling_price", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
             placeholder="84900"
             min={1}
             step={0.01}
@@ -252,20 +252,20 @@ function AddMotorcycleForm({ onSuccess, onCancel }: AddMotorcycleFormProps) {
         </div>
       </div>
 
-      <div className="flex gap-3 pt-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-        >
-          {submitting ? "กำลังเพิ่ม…" : "เพิ่มรถ"}
-        </button>
+      <div className="flex gap-2 pt-2">
         <button
           type="button"
           onClick={onCancel}
           className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
           ยกเลิก
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+        >
+          {submitting ? "กำลังเพิ่ม…" : "เพิ่มรถ"}
         </button>
       </div>
     </form>
@@ -404,7 +404,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       {submitError && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {submitError}
         </div>
       )}
@@ -415,7 +415,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
           <select
             value={form.type}
             onChange={(e) => set("type", e.target.value as any)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
           >
             <option value="part">อะไหล่</option>
             <option value="accessory">อุปกรณ์เสริม</option>
@@ -433,7 +433,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
             type="text"
             value={form.name}
             onChange={(e) => set("name", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
             placeholder={form.type === "service" ? "เช่น พ.ร.บ." : "เช่น หมวกกันน็อก รุ่น X"}
           />
           <FieldError message={errors.name} />
@@ -446,7 +446,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
               type="text"
               value={form.sku}
               onChange={(e) => set("sku", e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
               placeholder="SKU-12345"
             />
             <FieldError message={errors.sku} />
@@ -459,7 +459,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
         <textarea
           value={form.description}
           onChange={(e) => set("description", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
           placeholder="กรอกรายละเอียดสินค้า…"
           rows={3}
         />
@@ -474,7 +474,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
               type="number"
               value={form.cost_price}
               onChange={(e) => set("cost_price", e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
               placeholder="500"
               min={0}
               step={0.01}
@@ -491,7 +491,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
             type="number"
             value={form.price}
             onChange={(e) => set("price", e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
             placeholder="650"
             min={0}
             step={0.01}
@@ -507,7 +507,7 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
               value={form.stock_qty}
               disabled={!!addon} // Don't allow changing stock qty via text edit in Edit mode; use adjustments
               onChange={(e) => set("stock_qty", e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white disabled:bg-gray-100"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white disabled:bg-gray-100"
               placeholder="10"
               min={0}
             />
@@ -516,20 +516,20 @@ function AddonForm({ addon, typeLimit, onSuccess, onCancel }: AddonFormProps) {
         )}
       </div>
 
-      <div className="flex gap-3 pt-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-        >
-          {submitting ? "กำลังบันทึก…" : addon ? "บันทึกการแก้ไข" : "เพิ่มรายการ"}
-        </button>
+      <div className="flex gap-2 pt-2">
         <button
           type="button"
           onClick={onCancel}
           className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
           ยกเลิก
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+        >
+          {submitting ? "กำลังบันทึก…" : addon ? "บันทึกการแก้ไข" : "เพิ่มรายการ"}
         </button>
       </div>
     </form>
@@ -693,7 +693,7 @@ export default function InventoryPage() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8">
+      <div className="px-8 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -711,7 +711,7 @@ export default function InventoryPage() {
             {activeTab === "motorcycles" ? (
               <button
                 onClick={() => setShowAddMotoModal(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm"
               >
                 <span>+</span> เพิ่มรถ
               </button>
@@ -721,7 +721,7 @@ export default function InventoryPage() {
                   setEditingAddon(null);
                   setShowAddAddonModal(true);
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm"
               >
                 <span>+</span> เพิ่มอะไหล่/อุปกรณ์เสริม
               </button>
@@ -731,7 +731,7 @@ export default function InventoryPage() {
                   setEditingAddon(null);
                   setShowAddAddonModal(true);
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm"
               >
                 <span>+</span> เพิ่มรายการบริการ
               </button>
@@ -951,14 +951,14 @@ export default function InventoryPage() {
                     <button
                       disabled={motoPage <= 1}
                       onClick={() => setMotoPage((p) => p - 1)}
-                      className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors bg-white"
+                      className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                     >
                       ก่อนหน้า
                     </button>
                     <button
                       disabled={motoPage >= totalMotoPages}
                       onClick={() => setMotoPage((p) => p + 1)}
-                      className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors bg-white"
+                      className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                     >
                       ถัดไป
                     </button>
@@ -1046,7 +1046,7 @@ export default function InventoryPage() {
                           <td className="px-5 py-3 font-medium text-gray-900">
                             {addon.name}
                           </td>
-                          <td className="px-5 py-3 text-gray-600 capitalize">
+                          <td className="px-5 py-3 text-gray-600">
                             {ADDON_TYPE_TH[addon.type] ?? addon.type}
                           </td>
                           <td className="px-5 py-3 text-gray-500 max-w-xs truncate">
@@ -1063,21 +1063,21 @@ export default function InventoryPage() {
                               <button
                                 onClick={() => handleQuickStockAdjust(addon, -1)}
                                 disabled={addon.stockQty <= 0}
-                                className="w-6 h-6 flex items-center justify-center rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent text-xs"
+                                className="w-6 h-6 flex items-center justify-center rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent text-xs"
                                 title="ลดสต็อก 1 หน่วย"
                               >
                                 -
                               </button>
                               <button
                                 onClick={() => handleSetStock(addon)}
-                                className="px-2 py-0.5 min-w-[32px] text-center font-semibold rounded bg-gray-100 hover:bg-gray-200 text-gray-900 text-xs"
+                                className="px-2 py-0.5 min-w-[32px] text-center font-semibold rounded-md bg-gray-100 hover:bg-gray-200 text-gray-900 text-xs"
                                 title="คลิกเพื่อกำหนดจำนวนสต็อกเอง"
                               >
                                 {addon.stockQty}
                               </button>
                               <button
                                 onClick={() => handleQuickStockAdjust(addon, 1)}
-                                className="w-6 h-6 flex items-center justify-center rounded border border-gray-300 text-gray-600 hover:bg-gray-50 text-xs"
+                                className="w-6 h-6 flex items-center justify-center rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 text-xs"
                                 title="เพิ่มสต็อก 1 หน่วย"
                               >
                                 +
@@ -1183,7 +1183,7 @@ export default function InventoryPage() {
                             {formatPrice(addon.price)}
                           </td>
                           <td className="px-5 py-3 text-center">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${addon.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${addon.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                               {addon.active ? "ใช้งาน" : "ปิดใช้งาน"}
                             </span>
                           </td>

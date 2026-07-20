@@ -6,7 +6,7 @@ import Link from "next/link";
 import DashboardLayout from "@/components/DashboardLayout";
 import { apiFetch } from "@/lib/api";
 import { toastSuccess, alertError, confirm } from "@/lib/swal";
-import { formatPrice, formatDate, TH } from "@/lib/format";
+import { formatPrice, formatDate, TH, installmentStatusLabel, isAdvancePartial } from "@/lib/format";
 import type { ContractDetail, ContractInstallment, ContractParty } from "@csyfinproj/shared";
 
 // ─── Status configs ────────────────────────────────────────────────────────────
@@ -19,10 +19,10 @@ const CONTRACT_STATUS_STYLES: Record<string, string> = {
 };
 
 const INSTALLMENT_STATUS_STYLES: Record<ContractInstallment["status"], string> = {
-  pending: "bg-yellow-50 text-yellow-700 border border-yellow-200",
-  paid: "bg-green-50 text-green-700 border border-green-200",
-  overdue: "bg-red-50 text-red-700 border border-red-200",
-  partially_paid: "bg-orange-50 text-orange-700 border border-orange-200",
+  pending: "bg-yellow-50 text-yellow-700",
+  paid: "bg-green-50 text-green-700",
+  overdue: "bg-red-50 text-red-700",
+  partially_paid: "bg-orange-50 text-orange-700",
 };
 
 const CONTRACT_STATUSES: Array<{ value: string; label: string }> = [
@@ -104,11 +104,11 @@ function UpdateStatusPanel({
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">สถานะ</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">สถานะ</label>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
         >
           {CONTRACT_STATUSES.map((s) => (
             <option key={s.value} value={s.value}>{s.label}</option>
@@ -116,12 +116,12 @@ function UpdateStatusPanel({
         </select>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">หมายเหตุ</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
         <textarea
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
           placeholder="หมายเหตุเพิ่มเติม (ไม่บังคับ)…"
         />
       </div>
@@ -209,10 +209,10 @@ export default function ContractDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8 max-w-5xl">
+      <div className="px-8 py-6 max-w-5xl">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
-          <Link href="/contracts" className="hover:text-gray-700">สัญญาเช่าซื้อ</Link>
+          <Link href="/contracts" className="hover:text-gray-700 transition-colors">สัญญาเช่าซื้อ</Link>
           <span>/</span>
           <span className="font-mono text-gray-700">{contract.contractNumber}</span>
         </div>
@@ -225,7 +225,7 @@ export default function ContractDetailPage() {
                 {contract.contractNumber}
               </h1>
               <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                   CONTRACT_STATUS_STYLES[contract.status] ?? "bg-gray-100 text-gray-500"
                 }`}
               >
@@ -241,7 +241,7 @@ export default function ContractDetailPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => handlePrint("full")}
-              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
+              className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
             >
               พิมพ์สัญญาฉบับเต็ม
             </button>
@@ -264,7 +264,7 @@ export default function ContractDetailPage() {
           {/* Left — main content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Contract Summary */}
-            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100">
               <div className="px-5 py-4">
                 <h2 className="text-sm font-semibold text-gray-900">สรุปสัญญา</h2>
               </div>
@@ -304,13 +304,13 @@ export default function ContractDetailPage() {
 
             {/* Contract Parties (3-party display) */}
             {contractParties.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100">
                   <h2 className="text-sm font-semibold text-gray-900">
                     คู่สัญญา ({contractParties.length})
                   </h2>
                 </div>
-                <div className="divide-y divide-gray-50">
+                <div className="divide-y divide-gray-100">
                   {contractParties.map((party) => (
                     <div key={party.id} className="px-5 py-3 flex items-center justify-between">
                       <div>
@@ -320,7 +320,7 @@ export default function ContractDetailPage() {
                         </p>
                       </div>
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                           CONTRACT_PARTY_ROLE_STYLES[party.role] ?? "bg-gray-100 text-gray-500"
                         }`}
                       >
@@ -334,7 +334,7 @@ export default function ContractDetailPage() {
 
             {/* Linked Sales */}
             {contract.contractSales.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100">
                   <h2 className="text-sm font-semibold text-gray-900">
                     รายการขายที่เชื่อมโยง ({contract.contractSales.length})
@@ -352,7 +352,7 @@ export default function ContractDetailPage() {
                     </thead>
                     <tbody>
                       {contract.contractSales.map((cs) => (
-                        <tr key={cs.id} className="border-b border-gray-50">
+                        <tr key={cs.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                           <td className="px-5 py-3 text-gray-600">{formatDate(cs.sale.saleDate)}</td>
                           <td className="px-5 py-3">
                             <p className="font-medium text-gray-900">
@@ -381,7 +381,7 @@ export default function ContractDetailPage() {
             )}
 
             {/* Installment Schedule */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-900">
                   ตารางผ่อนชำระ
@@ -420,7 +420,7 @@ export default function ContractDetailPage() {
                       {contract.installments.map((inst) => {
                         const linkedPayments = (inst as any).payments || [];
                         return (
-                          <tr key={inst.id} className="border-b border-gray-50 hover:bg-gray-50">
+                          <tr key={inst.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-3 text-center text-gray-500">{inst.installmentNumber}</td>
                             <td className="px-4 py-3 text-gray-600">{formatDate(inst.dueDate)}</td>
                             {hasAmortizationData && (
@@ -450,8 +450,14 @@ export default function ContractDetailPage() {
                                 <div>
                                   <p className="font-semibold text-gray-900">{formatPrice(Number(inst.amountPaid))}</p>
                                   {inst.status === "partially_paid" && (
-                                    <p className="text-[10px] text-orange-600 font-medium">
-                                      (ขาด {formatPrice(Number(inst.amountDue) - Number(inst.amountPaid))})
+                                    <p
+                                      className={`text-[10px] font-medium ${
+                                        isAdvancePartial(inst.status, inst.dueDate)
+                                          ? "text-sky-600"
+                                          : "text-orange-600"
+                                      }`}
+                                    >
+                                      (คงเหลือ {formatPrice(Number(inst.amountDue) - Number(inst.amountPaid))})
                                     </p>
                                   )}
                                 </div>
@@ -505,14 +511,22 @@ export default function ContractDetailPage() {
                               <div className="flex flex-col items-center">
                                 <span
                                   className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                    INSTALLMENT_STATUS_STYLES[inst.status] ?? "bg-gray-100 text-gray-500"
+                                    isAdvancePartial(inst.status, inst.dueDate)
+                                      ? "bg-sky-50 text-sky-700"
+                                      : INSTALLMENT_STATUS_STYLES[inst.status] ?? "bg-gray-100 text-gray-500"
                                   }`}
                                 >
-                                  {TH.installmentStatus[inst.status] ?? inst.status}
+                                  {installmentStatusLabel(inst.status, inst.dueDate)}
                                 </span>
                                 {inst.status === "partially_paid" && (
-                                  <span className="text-[10px] text-orange-600 mt-1 font-semibold">
-                                    ค้างจ่าย: {formatPrice(Number(inst.amountDue) - Number(inst.amountPaid))}
+                                  <span
+                                    className={`text-[10px] mt-1 font-semibold ${
+                                      isAdvancePartial(inst.status, inst.dueDate)
+                                        ? "text-sky-600"
+                                        : "text-orange-600"
+                                    }`}
+                                  >
+                                    คงเหลือ: {formatPrice(Number(inst.amountDue) - Number(inst.amountPaid))}
                                   </span>
                                 )}
                               </div>
@@ -527,7 +541,7 @@ export default function ContractDetailPage() {
             </div>
 
             {/* Payment History */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100">
                 <h2 className="text-sm font-semibold text-gray-900">
                   ประวัติการชำระเงิน ({contract.payments.length})
@@ -550,12 +564,12 @@ export default function ContractDetailPage() {
                     </thead>
                     <tbody>
                       {contract.payments.map((payment) => (
-                        <tr key={payment.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <tr key={payment.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                           <td className="px-5 py-3 text-gray-600">{formatDate(payment.paymentDate)}</td>
                           <td className="px-5 py-3 text-right font-medium text-gray-900">
                             {formatPrice(payment.amount)}
                           </td>
-                          <td className="px-5 py-3 text-gray-600 capitalize">
+                          <td className="px-5 py-3 text-gray-600">
                             {TH.paymentChannel[payment.paymentChannel] ?? payment.paymentChannel.replace("_", " ")}
                           </td>
                           <td className="px-5 py-3 text-center">
@@ -581,7 +595,7 @@ export default function ContractDetailPage() {
           {/* Right — sidebar */}
           <div className="space-y-6">
             {/* Customer Card */}
-            <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
               <h2 className="text-sm font-semibold text-gray-900 mb-3">ลูกค้า</h2>
               <p className="text-sm font-medium text-gray-900">{contract.customer.name}</p>
               <p className="text-xs text-gray-500 mt-0.5">{contract.customer.phone}</p>
@@ -597,7 +611,7 @@ export default function ContractDetailPage() {
             </div>
 
             {/* Progress */}
-            <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
               <h2 className="text-sm font-semibold text-gray-900 mb-3">ความคืบหน้าการชำระ</h2>
               {contract.installments.length > 0 ? (
                 <>
@@ -624,7 +638,7 @@ export default function ContractDetailPage() {
 
             {/* Actions */}
             {showActions && (
-              <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
                 <h2 className="text-sm font-semibold text-gray-900 mb-3">อัปเดตสัญญา</h2>
                 <UpdateStatusPanel
                   contractId={contract.id}

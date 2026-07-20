@@ -61,6 +61,35 @@ export function formatDateTime(d: string | Date | null | undefined): string {
   });
 }
 
+/**
+ * Contextual label for an installment: a partially paid installment whose due
+ * date is still in the future is an ADVANCE payment (ชำระล่วงหน้า), not a
+ * carried balance — the current date vs. due date is the standard.
+ */
+export function installmentStatusLabel(
+  status: string,
+  dueDate?: string | Date | null
+): string {
+  if (status === "partially_paid" && dueDate) {
+    return new Date(dueDate).getTime() > Date.now()
+      ? "ชำระล่วงหน้าบางส่วน"
+      : "ค้างชำระบางส่วน";
+  }
+  return TH.installmentStatus[status] ?? status;
+}
+
+/** True when a partially paid installment is actually an advance payment. */
+export function isAdvancePartial(
+  status: string,
+  dueDate?: string | Date | null
+): boolean {
+  return (
+    status === "partially_paid" &&
+    !!dueDate &&
+    new Date(dueDate).getTime() > Date.now()
+  );
+}
+
 // ─── Thai labels for enums used across the app ────────────────────────────────
 
 export const TH = {

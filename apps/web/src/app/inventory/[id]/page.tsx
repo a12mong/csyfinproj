@@ -101,9 +101,9 @@ export default function MotorcycleDetailPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="px-8 py-8">
+        <div className="px-8 py-6">
           <div className="h-8 w-48 bg-gray-100 rounded animate-pulse mb-4" />
-          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" />
             ))}
@@ -116,7 +116,7 @@ export default function MotorcycleDetailPage() {
   if (error || !moto) {
     return (
       <DashboardLayout>
-        <div className="px-8 py-8">
+        <div className="px-8 py-6">
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error ?? "ไม่พบข้อมูลรถ"}
           </div>
@@ -133,10 +133,10 @@ export default function MotorcycleDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8 max-w-2xl">
+      <div className="px-8 py-6 max-w-2xl">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">
-          <Link href="/inventory" className="hover:text-gray-700">
+          <Link href="/inventory" className="hover:text-gray-700 transition-colors">
             คลังสินค้า
           </Link>
           <span>/</span>
@@ -170,14 +170,14 @@ export default function MotorcycleDetailPage() {
           /* Edit form */
           <form
             onSubmit={handleSave}
-            className="bg-white rounded-xl border border-gray-200 p-6 space-y-5"
+            className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5"
           >
             <h2 className="text-sm font-semibold text-gray-700">
               แก้ไขข้อมูลรถ
             </h2>
 
             {saveError && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {saveError}
               </div>
             )}
@@ -191,7 +191,7 @@ export default function MotorcycleDetailPage() {
                 required
                 value={form.model}
                 onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
             </div>
 
@@ -204,7 +204,7 @@ export default function MotorcycleDetailPage() {
                 required
                 value={form.color}
                 onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
             </div>
 
@@ -221,7 +221,7 @@ export default function MotorcycleDetailPage() {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, selling_price: e.target.value }))
                 }
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
             </div>
 
@@ -237,7 +237,7 @@ export default function MotorcycleDetailPage() {
                     status: e.target.value as MotorcycleStatus,
                   }))
                 }
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               >
                 {STATUS_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -247,14 +247,7 @@ export default function MotorcycleDetailPage() {
               </select>
             </div>
 
-            <div className="flex gap-3 pt-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-              >
-                {saving ? "กำลังบันทึก…" : "บันทึก"}
-              </button>
+            <div className="flex gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => {
@@ -267,15 +260,22 @@ export default function MotorcycleDetailPage() {
                     status: moto.status,
                   });
                 }}
-                className="px-5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 ยกเลิก
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              >
+                {saving ? "กำลังบันทึก…" : "บันทึก"}
               </button>
             </div>
           </form>
         ) : (
           /* Detail view */
-          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100">
             {[
               { label: "ยี่ห้อ", value: moto.brand },
               { label: "รุ่น", value: moto.model },
@@ -315,7 +315,7 @@ export default function MotorcycleDetailPage() {
         <div className="mt-6">
           <Link
             href="/inventory"
-            className="text-sm text-gray-500 hover:text-gray-700"
+            className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
           >
             ← กลับไปหน้าคลังสินค้า
           </Link>

@@ -46,7 +46,7 @@ const CUSTOMER_TYPE_BADGE: Record<string, { label: string; className: string }> 
 function CustomerTypeBadge({ type }: { type: string }) {
   const style = CUSTOMER_TYPE_BADGE[type] ?? { label: type, className: "bg-gray-100 text-gray-600" };
   return (
-    <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${style.className}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${style.className}`}>
       {style.label}
     </span>
   );
@@ -262,6 +262,7 @@ type PaymentMethod = "cash" | "installment" | "finance_company";
 interface PricingForm {
   payment_method: PaymentMethod;
   total_price: string;
+  discount_amount: string;
   down_payment: string;
   notes: string;
   finance_company_name?: string;
@@ -306,9 +307,11 @@ function StepPricing({
   const isCash = form.payment_method === "cash";
   const requiresBuyer = invoiceCustomer?.type === "finance";
   const totalPrice = parseFloat(form.total_price) || 0;
+  const discountAmount = parseFloat(form.discount_amount) || 0;
   const downPayment = parseFloat(form.down_payment) || 0;
-  const financeAmount = Math.max(0, totalPrice - downPayment);
   const effectiveTotalPrice = totalPrice > 0 ? totalPrice : Number(motorcycle.sellingPrice);
+  const netPrice = Math.max(0, effectiveTotalPrice - discountAmount);
+  const financeAmount = Math.max(0, netPrice - downPayment);
 
   // Pre-fill finance company name if invoice customer is type finance
   useEffect(() => {
@@ -490,7 +493,7 @@ function StepPricing({
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
                 ชื่อบริษัทไฟแนนซ์ <span className="text-red-500">*</span>
               </label>
               <input
@@ -506,7 +509,7 @@ function StepPricing({
             </div>
             
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
                 รหัสสถาบันการเงิน (ไม่บังคับ)
               </label>
               <select
@@ -534,7 +537,7 @@ function StepPricing({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
                 เลขอ้างอิงไฟแนนซ์ (ไม่บังคับ)
               </label>
               <input
@@ -547,7 +550,7 @@ function StepPricing({
             </div>
             
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
                 ค่าคอมมิชชั่น (บาท) (ไม่บังคับ)
               </label>
               <input
@@ -592,7 +595,7 @@ function StepPricing({
               });
             }}
             placeholder={String(motorcycle.sellingPrice)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
           {errors.total_price && (
             <p className="mt-1 text-xs text-red-600">{errors.total_price}</p>
@@ -624,10 +627,38 @@ function StepPricing({
               });
             }}
             placeholder="0"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:bg-gray-100 disabled:text-gray-500"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:bg-gray-100 disabled:text-gray-500"
           />
           {errors.down_payment && (
             <p className="mt-1 text-xs text-red-600">{errors.down_payment}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Discount */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            ส่วนลด (บาท)
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={form.discount_amount}
+            onChange={(e) => set("discount_amount", e.target.value)}
+            placeholder="0"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          />
+          {errors.discount_amount && (
+            <p className="mt-1 text-xs text-red-600">{errors.discount_amount}</p>
+          )}
+        </div>
+        <div className="flex items-end">
+          {discountAmount > 0 && (
+            <div className="w-full rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm flex justify-between">
+              <span className="text-green-700">ราคาหลังหักส่วนลด</span>
+              <span className="font-semibold text-green-800">{formatPrice(netPrice)}</span>
+            </div>
           )}
         </div>
       </div>
@@ -638,14 +669,14 @@ function StepPricing({
           <div className="flex justify-between items-center text-xs text-gray-500">
             <span>ดาวน์ 0% (0 THB)</span>
             <span className="font-medium text-primary-700 bg-primary-50 px-2 py-0.5 rounded-full">
-              สัดส่วนดาวน์: {effectiveTotalPrice > 0 ? ((downPayment / effectiveTotalPrice) * 100).toFixed(0) : 0}%
+              สัดส่วนดาวน์: {netPrice > 0 ? ((downPayment / netPrice) * 100).toFixed(0) : 0}%
             </span>
-            <span>ดาวน์ 100% ({formatPrice(effectiveTotalPrice)})</span>
+            <span>ดาวน์ 100% ({formatPrice(netPrice)})</span>
           </div>
           <input
             type="range"
             min={0}
-            max={effectiveTotalPrice}
+            max={netPrice}
             step={100}
             value={downPayment}
             onChange={(e) => set("down_payment", e.target.value)}
@@ -673,7 +704,7 @@ function StepPricing({
           rows={2}
           value={form.notes}
           onChange={(e) => set("notes", e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none"
           placeholder="หมายเหตุเพิ่มเติม (ไม่บังคับ)…"
         />
       </div>
@@ -776,7 +807,7 @@ function StepAddons({
                           e.stopPropagation();
                           onChangeBillingOption(addon.id, "pay_separately");
                         }}
-                        className={`px-2.5 py-1 rounded border text-xs font-semibold transition-colors ${
+                        className={`px-2.5 py-1 rounded-md border text-xs font-semibold transition-colors ${
                           billingOption === "pay_separately"
                             ? "bg-primary-600 border-primary-600 text-white"
                             : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
@@ -791,7 +822,7 @@ function StepAddons({
                             e.stopPropagation();
                             onChangeBillingOption(addon.id, "included_in_finance");
                           }}
-                          className={`px-2.5 py-1 rounded border text-xs font-semibold transition-colors ${
+                          className={`px-2.5 py-1 rounded-md border text-xs font-semibold transition-colors ${
                             billingOption === "included_in_finance"
                               ? "bg-primary-600 border-primary-600 text-white"
                               : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
@@ -806,7 +837,7 @@ function StepAddons({
                           e.stopPropagation();
                           onChangeBillingOption(addon.id, "free_gift");
                         }}
-                        className={`px-2.5 py-1 rounded border text-xs font-semibold transition-colors ${
+                        className={`px-2.5 py-1 rounded-md border text-xs font-semibold transition-colors ${
                           billingOption === "free_gift"
                             ? "bg-primary-600 border-primary-600 text-white"
                             : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
@@ -866,9 +897,11 @@ function StepConfirm({
   addonBillingOptions: Record<string, string>;
 }) {
   const totalPrice = parseFloat(pricing.total_price) || 0;
+  const discountAmount = parseFloat(pricing.discount_amount) || 0;
+  const netPrice = Math.max(0, totalPrice - discountAmount);
   const downPayment = parseFloat(pricing.down_payment) || 0;
 
-  const baseFinanceAmount = Math.max(0, totalPrice - downPayment);
+  const baseFinanceAmount = Math.max(0, netPrice - downPayment);
   const addonsFinanceAmount = addons
     .filter((a) => addonIds.includes(a.id) && (addonBillingOptions[a.id] || "pay_separately") === "included_in_finance")
     .reduce((sum, a) => sum + Number(a.price), 0);
@@ -931,6 +964,18 @@ function StepConfirm({
             <span className="text-gray-500">ราคารวม</span>
             <span className="font-medium">{formatPrice(totalPrice)}</span>
           </div>
+          {discountAmount > 0 && (
+            <>
+              <div className="flex justify-between">
+                <span className="text-gray-500">ส่วนลด</span>
+                <span className="font-medium text-green-700">-{formatPrice(discountAmount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">ราคาหลังหักส่วนลด</span>
+                <span className="font-semibold">{formatPrice(netPrice)}</span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between">
             <span className="text-gray-500">เงินดาวน์</span>
             <span className="font-medium">{formatPrice(downPayment)}</span>
@@ -984,6 +1029,7 @@ function StepConfirm({
 const INITIAL_PRICING: PricingForm = {
   payment_method: "cash",
   total_price: "",
+  discount_amount: "",
   down_payment: "",
   notes: "",
   finance_company_name: "",
@@ -1088,6 +1134,12 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
     if (pricing.down_payment !== "" && (isNaN(downPayment) || downPayment < 0)) {
       errors.down_payment = "กรุณากรอกเงินดาวน์ที่ถูกต้อง";
     }
+    const discountVal = parseFloat(pricing.discount_amount);
+    if (pricing.discount_amount !== "" && (isNaN(discountVal) || discountVal < 0)) {
+      errors.discount_amount = "กรุณากรอกส่วนลดที่ถูกต้อง";
+    } else if (!isNaN(discountVal) && !isNaN(totalPrice) && discountVal >= totalPrice) {
+      errors.discount_amount = "ส่วนลดต้องน้อยกว่าราคารวม";
+    }
 
     if (pricing.payment_method === "finance_company") {
       if (!pricing.finance_company_name?.trim()) {
@@ -1141,6 +1193,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
         invoice_customer_id: customer.id,
         motorcycle_id: motorcycle.id,
         total_price: parseFloat(pricing.total_price),
+        discount_amount: parseFloat(pricing.discount_amount) || 0,
         down_payment: parseFloat(pricing.down_payment) || 0,
         payment_method: pricing.payment_method,
       };
@@ -1196,6 +1249,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
 
   if (createdSale) {
     const totalPrice = createdSale.totalPrice || 0;
+    const successDiscount = Number((createdSale as unknown as { discountAmount?: number }).discountAmount) || 0;
     const downPayment = createdSale.downPayment || 0;
     const financeAmount = createdSale.financeAmount || 0;
 
@@ -1232,12 +1286,18 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
           </div>
           <div className="px-4 py-3 flex justify-between">
             <span className="text-gray-500">รูปแบบการชำระ</span>
-            <span className="font-medium text-gray-900 capitalize">{TH.paymentMethod[pricing.payment_method] ?? pricing.payment_method}</span>
+            <span className="font-medium text-gray-900">{TH.paymentMethod[pricing.payment_method] ?? pricing.payment_method}</span>
           </div>
           <div className="px-4 py-3 flex justify-between">
-            <span className="text-gray-500">ราคาสุทธิ</span>
+            <span className="text-gray-500">ราคารวม</span>
             <span className="font-semibold text-gray-900">{formatPrice(totalPrice)}</span>
           </div>
+          {successDiscount > 0 && (
+            <div className="px-4 py-3 flex justify-between">
+              <span className="text-gray-500">ส่วนลด</span>
+              <span className="font-medium text-green-700">-{formatPrice(successDiscount)}</span>
+            </div>
+          )}
           <div className="px-4 py-3 flex justify-between">
             <span className="text-gray-500">เงินดาวน์</span>
             <span className="font-medium text-gray-900">{formatPrice(downPayment)}</span>
@@ -1261,7 +1321,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
           <button
             type="button"
             onClick={() => onSuccess(createdSale.id)}
-            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors flex-1 shadow-sm font-semibold"
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors flex-1 shadow-sm"
           >
             ยืนยัน & ไปหน้ารายละเอียดการขาย
           </button>
@@ -1314,18 +1374,18 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
       )}
 
       {submitError && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {submitError}
         </div>
       )}
 
       {/* Navigation */}
-      <div className="flex gap-3 mt-5 pt-4 border-t border-gray-100">
+      <div className="flex gap-2 mt-5 pt-4 border-t border-gray-100">
         {step > 1 ? (
           <button
             type="button"
             onClick={() => setStep((s) => s - 1)}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             ย้อนกลับ
           </button>
@@ -1333,7 +1393,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             ยกเลิก
           </button>
@@ -1345,7 +1405,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
             type="button"
             onClick={handleNext}
             disabled={!canAdvance}
-            className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
             ถัดไป
           </button>
@@ -1355,7 +1415,7 @@ function NewSaleForm({ onSuccess, onCancel, prefilledCustomerId }: NewSaleFormPr
             type="button"
             onClick={() => handleSubmit()}
             disabled={submitting}
-            className="flex-1 px-5 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="flex-1 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
             {submitting ? "กำลังสร้างรายการขาย…" : "ยืนยันสร้างรายการขาย"}
           </button>
@@ -1428,7 +1488,7 @@ function SalesPageInner() {
 
   return (
     <DashboardLayout>
-      <div className="px-8 py-8">
+      <div className="px-8 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -1439,7 +1499,7 @@ function SalesPageInner() {
           </div>
           <button
             onClick={() => setShowNewModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm"
           >
             <span>+</span> สร้างรายการขาย
           </button>
@@ -1467,7 +1527,7 @@ function SalesPageInner() {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -1527,7 +1587,7 @@ function SalesPageInner() {
                       </td>
                       <td className="px-5 py-3">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             SALE_STATUS_STYLES[sale.status] ?? "bg-gray-100 text-gray-500"
                           }`}
                         >
@@ -1559,14 +1619,14 @@ function SalesPageInner() {
                 <button
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
+                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                 >
                   ก่อนหน้า
                 </button>
                 <button
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-white transition-colors"
+                  className="px-3 py-1.5 text-xs rounded-md border border-gray-300 bg-white text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition-colors"
                 >
                   ถัดไป
                 </button>
