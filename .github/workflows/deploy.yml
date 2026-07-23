@@ -119,9 +119,12 @@ jobs:
             docker compose up -d --wait db
 
             # Sync schema (project convention: prisma db push, see docs).
-            # Without --accept-data-loss this FAILS on destructive changes,
-            # leaving the old version running — resolve those manually.
-            docker compose run --rm api npx prisma db push --skip-generate
+            # dev: disposable seed data → auto-accept destructive changes
+            # (Prisma also demands the flag for safe ones like new unique
+            # indexes). live: stay strict — a destructive change FAILS here,
+            # leaving the old version running; resolve it manually via tunnel.
+            docker compose run --rm api npx prisma db push --skip-generate \
+              ${{ github.ref_name == 'main' && '' || '--accept-data-loss' }}
 
             docker compose up -d --remove-orphans --wait
 
