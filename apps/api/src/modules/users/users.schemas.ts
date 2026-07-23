@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { usernameSchema } from "../auth/auth.schemas.js";
 
 export const listUsersQuerySchema = z.object({
   role: z.enum(["admin", "staff", "viewer"]).optional(),
@@ -9,6 +10,7 @@ export const listUsersQuerySchema = z.object({
 });
 
 export const createUserSchema = z.object({
+  username: usernameSchema.optional(),
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().min(1),
@@ -19,6 +21,7 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z
   .object({
     name: z.string().min(1).optional(),
+    username: usernameSchema.nullable().optional(),
     email: z.string().email().optional(),
     role: z.enum(["admin", "staff", "viewer"]).optional(),
     role_id: z.string().uuid().nullable().optional(),

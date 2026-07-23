@@ -5,6 +5,7 @@ import type { LoginInput, RegisterInput } from "./auth.schemas.js";
 
 export interface UserDto {
   id: string;
+  username: string | null;
   email: string;
   name: string;
   role: "admin" | "staff" | "viewer";
@@ -22,12 +23,14 @@ const JWT_EXPIRES_IN = "8h";
 
 function toUserDto(user: {
   id: string;
+  username: string | null;
   email: string;
   name: string;
   role: string;
 }): UserDto {
   return {
     id: user.id,
+    username: user.username,
     email: user.email,
     name: user.name,
     role: user.role as UserDto["role"],
@@ -35,7 +38,11 @@ function toUserDto(user: {
 }
 
 export async function login(input: LoginInput): Promise<{ token: string; user: UserDto }> {
-  const user = await prisma.user.findUnique({ where: { email: input.email } });
+  // Either field may hold a username or an email — match against both columns
+  const identifier = (input.username ?? input.email ?? "").trim();
+  const user = await prisma.user.findFirst({
+    where: { OR: [{ username: identifier }, { email: identifier }] },
+  });
 
   if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) {
     throw Object.assign(new Error("Invalid credentials"), { statusCode: 401 });
@@ -62,10 +69,18 @@ export async function register(
     throw Object.assign(new Error("Email already in use"), { statusCode: 409 });
   }
 
+  if (input.username) {
+    const usernameTaken = await prisma.user.findUnique({ where: { username: input.username } });
+    if (usernameTaken) {
+      throw Object.assign(new Error("Username already in use"), { statusCode: 409 });
+    }
+  }
+
   const passwordHash = await bcrypt.hash(input.password, 12);
 
   const user = await prisma.user.create({
     data: {
+      username: input.username ?? null,
       email: input.email,
       passwordHash,
       name: input.name,

@@ -73,6 +73,9 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    environment:
+      # dev instance ตั้ง APP_ENV=dev ใน .env → หน้าเว็บแสดง badge "DEV" บน nav
+      APP_ENV: ${APP_ENV:-live}
     networks:
       default:
       edge:

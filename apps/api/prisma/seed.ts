@@ -143,6 +143,7 @@ async function main() {
   const adminHash = await bcrypt.hash(adminPassword, 12);
   const admin = await prisma.user.create({
     data: {
+      username: "admin",
       email: adminEmail,
       passwordHash: adminHash,
       name: "Admin Supachai",
@@ -154,15 +155,15 @@ async function main() {
 
   const passwordHash = await bcrypt.hash("Password123!", 12);
   const mockUsersData = [
-    { email: "staff1@csyfinproj.local", name: faker.person.fullName(), role: "staff" as UserRole, roleId: managerRole.id },
-    { email: "staff2@csyfinproj.local", name: faker.person.fullName(), role: "staff" as UserRole, roleId: staffRole.id },
-    { email: "viewer1@csyfinproj.local", name: faker.person.fullName(), role: "viewer" as UserRole, roleId: viewerRole.id },
+    { username: "staff1", email: "staff1@csyfinproj.local", name: faker.person.fullName(), role: "staff" as UserRole, roleId: managerRole.id },
+    { username: "staff2", email: "staff2@csyfinproj.local", name: faker.person.fullName(), role: "staff" as UserRole, roleId: staffRole.id },
+    { username: "viewer1", email: "viewer1@csyfinproj.local", name: faker.person.fullName(), role: "viewer" as UserRole, roleId: viewerRole.id },
   ];
 
   const dbUsers = [];
   for (const u of mockUsersData) {
     const user = await prisma.user.create({
-      data: { email: u.email, name: u.name, role: u.role, roleId: u.roleId, passwordHash },
+      data: { username: u.username, email: u.email, name: u.name, role: u.role, roleId: u.roleId, passwordHash },
     });
     dbUsers.push(user);
   }
