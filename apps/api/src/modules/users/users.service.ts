@@ -10,6 +10,7 @@ import { createDefaultPermissions } from "../permissions/permissions.service.js"
 
 export interface UserDto {
   id: string;
+  username: string | null;
   email: string;
   name: string;
   role: "admin" | "staff" | "viewer";
@@ -20,6 +21,7 @@ export interface UserDto {
 
 function toUserDto(user: {
   id: string;
+  username: string | null;
   email: string;
   name: string;
   role: string;
@@ -31,6 +33,7 @@ function toUserDto(user: {
 }): UserDto & { roleId?: string | null; roleName?: string | null } {
   return {
     id: user.id,
+    username: user.username,
     email: user.email,
     name: user.name,
     role: user.role as UserDto["role"],
@@ -58,6 +61,7 @@ export async function listUsers(query: ListUsersQuery) {
   if (query.search) {
     where["OR"] = [
       { name: { contains: query.search } },
+      { username: { contains: query.search } },
       { email: { contains: query.search } },
     ];
   }
@@ -107,12 +111,20 @@ export async function createUser(input: CreateUserInput) {
     throw Object.assign(new Error("Email already in use"), { statusCode: 409 });
   }
 
+  if (input.username) {
+    const usernameTaken = await prisma.user.findUnique({ where: { username: input.username } });
+    if (usernameTaken) {
+      throw Object.assign(new Error("ชื่อผู้ใช้นี้ถูกใช้แล้ว"), { statusCode: 409 });
+    }
+  }
+
   const passwordHash = await bcrypt.hash(input.password, 12);
 
   const assignment = input.role_id ? await resolveRoleAssignment(input.role_id) : null;
 
   const user = await prisma.user.create({
     data: {
+      username: input.username ?? null,
       email: input.email,
       passwordHash,
       name: input.name,
@@ -166,10 +178,20 @@ export async function updateUser(
     }
   }
 
+  if (input.username) {
+    const usernameTaken = await prisma.user.findFirst({
+      where: { username: input.username, id: { not: id } },
+    });
+    if (usernameTaken) {
+      throw Object.assign(new Error("ชื่อผู้ใช้นี้ถูกใช้แล้ว"), { statusCode: 409 });
+    }
+  }
+
   const updated = await prisma.user.update({
     where: { id },
     data: {
       ...(input.name !== undefined && { name: input.name }),
+      ...(input.username !== undefined && { username: input.username }),
       ...(input.email !== undefined && { email: input.email }),
       ...(input.role !== undefined && !assignment && { role: input.role }),
       ...(assignment && { roleId: assignment.roleId, role: assignment.enumRole }),

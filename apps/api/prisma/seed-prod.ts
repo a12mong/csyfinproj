@@ -97,6 +97,7 @@ async function main() {
   await prisma.user.upsert({
     where: { email },
     create: {
+      username: "admin",
       email,
       passwordHash,
       name: "Administrator",
@@ -104,7 +105,7 @@ async function main() {
       roleId: admin.id,
     },
     // มีอยู่แล้ว: อัปเดตรหัส + ผูก role admin ให้ (ใช้ reset รหัส admin ได้ด้วย)
-    update: { passwordHash, role: "admin", roleId: admin.id, active: true },
+    update: { username: "admin", passwordHash, role: "admin", roleId: admin.id, active: true },
   });
   console.log(`✓ Admin user: ${email}`);
 

@@ -13,6 +13,7 @@ import { toastSuccess, alertError, confirm } from "@/lib/swal";
 
 interface UserDto {
   id: string;
+  username?: string | null;
   email: string;
   name: string;
   role: "admin" | "staff" | "viewer";
@@ -118,6 +119,7 @@ function useRoleOptions() {
 
 function CreateUserForm({ onSuccess, onCancel }: CreateUserFormProps) {
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const roles = useRoleOptions();
@@ -139,7 +141,13 @@ function CreateUserForm({ onSuccess, onCancel }: CreateUserFormProps) {
     try {
       const res = await apiFetch<{ data: UserDto }>("/users", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), password, role_id: roleId }),
+        body: JSON.stringify({
+          name: name.trim(),
+          ...(username.trim() && { username: username.trim() }),
+          email: email.trim(),
+          password,
+          role_id: roleId,
+        }),
       });
       toastSuccess("User created successfully");
       onSuccess(res.data);
@@ -165,6 +173,23 @@ function CreateUserForm({ onSuccess, onCancel }: CreateUserFormProps) {
           placeholder="Full name"
           className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          ชื่อผู้ใช้ (Username)
+        </label>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="a-z 0-9 . _ - อย่างน้อย 3 ตัวอักษร"
+          pattern="[a-zA-Z0-9._\-]{3,100}"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
+        <p className="mt-1 text-[11px] text-gray-400">
+          ใช้เข้าสู่ระบบแทนอีเมลได้ (เว้นว่างได้ — เข้าสู่ระบบด้วยอีเมล)
+        </p>
       </div>
 
       <div>
@@ -256,6 +281,7 @@ function EditUserForm({ user, onSuccess, onCancel }: EditUserFormProps) {
 
   // Profile state
   const [name, setName] = useState(user.name);
+  const [username, setUsername] = useState(user.username ?? "");
   const [email, setEmail] = useState(user.email);
   const [roleId, setRoleId] = useState(user.roleId ?? "");
   useEffect(() => {
@@ -278,7 +304,12 @@ function EditUserForm({ user, onSuccess, onCancel }: EditUserFormProps) {
     try {
       const res = await apiFetch<{ data: UserDto }>(`/users/${user.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), role_id: roleId }),
+        body: JSON.stringify({
+          name: name.trim(),
+          username: username.trim() || null,
+          email: email.trim(),
+          role_id: roleId,
+        }),
       });
       toastSuccess("User updated successfully");
       onSuccess(res.data);
@@ -308,6 +339,23 @@ function EditUserForm({ user, onSuccess, onCancel }: EditUserFormProps) {
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              ชื่อผู้ใช้ (Username)
+            </label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="a-z 0-9 . _ - อย่างน้อย 3 ตัวอักษร"
+              pattern="[a-zA-Z0-9._\-]{3,100}"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+            <p className="mt-1 text-[11px] text-gray-400">
+              ใช้เข้าสู่ระบบแทนอีเมลได้ (เว้นว่าง = เข้าสู่ระบบด้วยอีเมลเท่านั้น)
+            </p>
           </div>
 
           <div>
@@ -556,6 +604,7 @@ export default function UsersPage() {
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Username</th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Email</th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Role</th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
@@ -567,7 +616,7 @@ export default function UsersPage() {
                   {loading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i} className="border-b border-gray-50">
-                        {Array.from({ length: 6 }).map((__, j) => (
+                        {Array.from({ length: 7 }).map((__, j) => (
                           <td key={j} className="px-5 py-3">
                             <div className="h-4 bg-gray-100 rounded animate-pulse" />
                           </td>
@@ -577,7 +626,7 @@ export default function UsersPage() {
                   ) : users.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="px-5 py-12 text-center text-sm text-gray-400"
                       >
                         No users found.{" "}
@@ -600,6 +649,9 @@ export default function UsersPage() {
                           {currentUser && u.id === currentUser.id && (
                             <span className="ml-2 text-xs text-gray-400">(you)</span>
                           )}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600 font-mono text-xs">
+                          {u.username ?? "—"}
                         </td>
                         <td className="px-5 py-3 text-gray-600">{u.email}</td>
                         <td className="px-5 py-3">
