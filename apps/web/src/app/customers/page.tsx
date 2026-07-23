@@ -7,9 +7,19 @@ import DashboardLayout from "@/components/DashboardLayout";
 import FormModal from "@/components/FormModal";
 import { apiFetch } from "@/lib/api";
 import { toastSuccess, alertError } from "@/lib/swal";
+import { TH } from "@/lib/format";
 import type { Customer, PaginatedResponse } from "@csyfinproj/shared";
 
 const PAGE_SIZE = 20;
+
+// กลุ่มประเภทลูกค้า: ทั่วไป (personal/individual) กับสถาบันการเงิน/ไฟแนนซ์ (finance)
+type TypeFilter = "all" | "general" | "finance";
+
+const TYPE_FILTERS: Array<{ value: TypeFilter; label: string; apiTypes?: string }> = [
+  { value: "all", label: "ทั้งหมด" },
+  { value: "general", label: "ลูกค้าทั่วไป", apiTypes: "personal,individual" },
+  { value: "finance", label: "ไฟแนนซ์/สถาบันการเงิน", apiTypes: "finance" },
+];
 
 // ─── Add Customer Form ────────────────────────────────────────────────────────
 
@@ -227,12 +237,13 @@ export default function CustomersPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
   const fetchCustomers = useCallback(
-    async (currentPage: number, searchTerm: string) => {
+    async (currentPage: number, searchTerm: string, filter: TypeFilter) => {
       setLoading(true);
       setError(null);
       try {
@@ -241,6 +252,8 @@ export default function CustomersPage() {
           limit: String(PAGE_SIZE),
         });
         if (searchTerm) params.set("search", searchTerm);
+        const apiTypes = TYPE_FILTERS.find((f) => f.value === filter)?.apiTypes;
+        if (apiTypes) params.set("type", apiTypes);
 
         const res = await apiFetch<PaginatedResponse<Customer>>(
           `/customers?${params}`
@@ -259,11 +272,16 @@ export default function CustomersPage() {
   );
 
   useEffect(() => {
-    fetchCustomers(page, search);
-  }, [page, search, fetchCustomers]);
+    fetchCustomers(page, search, typeFilter);
+  }, [page, search, typeFilter, fetchCustomers]);
 
   function handleSearch(value: string) {
     setSearch(value);
+    setPage(1);
+  }
+
+  function handleTypeFilter(value: TypeFilter) {
+    setTypeFilter(value);
     setPage(1);
   }
 
@@ -293,6 +311,23 @@ export default function CustomersPage() {
           </button>
         </div>
 
+        {/* Navigation Tabs (สไตล์เดียวกับหน้า /inventory) */}
+        <div className="flex border-b border-gray-200 mb-6">
+          {TYPE_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => handleTypeFilter(f.value)}
+              className={`px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
+                typeFilter === f.value
+                  ? "border-primary-600 text-primary-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         {/* Search */}
         <div className="mb-6">
           <input
@@ -317,6 +352,7 @@ export default function CustomersPage() {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">ชื่อ</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">ประเภท</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">เบอร์โทร</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">เลขบัตรประชาชน</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">อีเมล</th>
@@ -327,7 +363,7 @@ export default function CustomersPage() {
                 {loading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i} className="border-b border-gray-50">
-                      {Array.from({ length: 5 }).map((__, j) => (
+                      {Array.from({ length: 6 }).map((__, j) => (
                         <td key={j} className="px-5 py-3">
                           <div className="h-4 bg-gray-100 rounded animate-pulse" />
                         </td>
@@ -337,7 +373,7 @@ export default function CustomersPage() {
                 ) : customers.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="px-5 py-12 text-center text-sm text-gray-400"
                     >
                       ไม่พบลูกค้า{" "}
@@ -357,6 +393,17 @@ export default function CustomersPage() {
                     >
                       <td className="px-5 py-3 font-medium text-gray-900">
                         {customer.name}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                            customer.type === "finance"
+                              ? "bg-indigo-50 text-indigo-700"
+                              : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {TH.customerType[customer.type ?? "personal"] ?? "บุคคลทั่วไป"}
+                        </span>
                       </td>
                       <td className="px-5 py-3 text-gray-600">
                         {customer.phone}
