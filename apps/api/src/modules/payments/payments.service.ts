@@ -138,7 +138,11 @@ export async function recordPayment(input: CreatePaymentInput) {
         );
       }
 
-      let remainingAmount = input.amount;
+      // Money math must stay on satang precision — raw float accumulation
+      // leaves the last installment a hair short of "paid"
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      let remainingAmount = round2(input.amount);
       const paymentsCreated = [];
 
       for (const inst of openInstallments) {
@@ -146,12 +150,12 @@ export async function recordPayment(input: CreatePaymentInput) {
 
         const due = Number(inst.amountDue);
         const paid = Number(inst.amountPaid);
-        const outstanding = due - paid;
+        const outstanding = round2(due - paid);
 
         if (outstanding <= 0) continue;
 
         const applyAmount = Math.min(remainingAmount, outstanding);
-        remainingAmount -= applyAmount;
+        remainingAmount = round2(remainingAmount - applyAmount);
 
         const payment = await tx.payment.create({
           data: {
@@ -166,7 +170,7 @@ export async function recordPayment(input: CreatePaymentInput) {
           },
         });
 
-        const totalPaid = paid + applyAmount;
+        const totalPaid = round2(paid + applyAmount);
         const newStatus =
           totalPaid >= due
             ? "paid"
@@ -203,7 +207,7 @@ export async function recordPayment(input: CreatePaymentInput) {
             },
           });
 
-          const totalPaid = Number(lastInst.amountPaid) + remainingAmount;
+          const totalPaid = round2(Number(lastInst.amountPaid) + remainingAmount);
           await tx.installment.update({
             where: { id: lastInst.id },
             data: {
@@ -215,6 +219,27 @@ export async function recordPayment(input: CreatePaymentInput) {
 
           paymentsCreated.push(payment);
         }
+      }
+
+      // ปิดสัญญาอัตโนมัติเมื่อไม่มีงวดค้างชำระเหลือ (ผ่อนครบ = ปิดสัญญา + ปิดรายการขาย)
+      const openLeft = await tx.installment.count({
+        where: {
+          contractId,
+          status: { in: ["pending", "overdue", "partially_paid"] },
+        },
+      });
+      if (openLeft === 0) {
+        await tx.contract.update({
+          where: { id: contractId },
+          data: { status: "completed" },
+        });
+        await tx.sale.updateMany({
+          where: {
+            contractSales: { some: { contractId } },
+            paymentMethod: "installment",
+          },
+          data: { status: "completed" },
+        });
       }
 
       return paymentsCreated[0];
@@ -239,7 +264,7 @@ export async function recordPayment(input: CreatePaymentInput) {
         },
       });
 
-      const totalPaid = Number(inst.amountPaid) + input.amount;
+      const totalPaid = Math.round((Number(inst.amountPaid) + input.amount) * 100) / 100;
       const newStatus =
         totalPaid >= Number(inst.amountDue)
           ? "paid"
@@ -256,8 +281,29 @@ export async function recordPayment(input: CreatePaymentInput) {
         },
       });
 
+      // Sale-linked installment without a contract: complete the sale when no open installments remain
+      if (inst.saleId) {
+        const openLeft = await tx.installment.count({
+          where: {
+            saleId: inst.saleId,
+            status: { in: ["pending", "overdue", "partially_paid"] },
+          },
+        });
+        if (openLeft === 0) {
+          await tx.sale.update({
+            where: { id: inst.saleId },
+            data: { status: "completed" },
+          });
+        }
+      }
+
       return payment;
     }
+  }, {
+    // Lump-sum payoff (โปะปิดสัญญา) allocates across every open installment —
+    // dozens of sequential writes to a remote DB exceed the 5s default
+    maxWait: 10000,
+    timeout: 60000,
   });
 
   return { data: result };

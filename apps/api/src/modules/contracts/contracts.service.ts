@@ -65,10 +65,21 @@ export async function createContract(input: CreateContractInput, userId: string)
           include: {
             customer: true,
             invoiceCustomer: true,
-            financialInstitution: true,
           },
         })
       : [];
+
+  // Contracts exist only for in-house installment sales (เช่าซื้อกับร้าน).
+  // Finance-company sales are paid in full by the institution — no contract, no schedule.
+  const nonInstallmentSale = linkedSales.find((s) => s.paymentMethod !== "installment");
+  if (nonInstallmentSale) {
+    throw Object.assign(
+      new Error(
+        "สัญญาเช่าซื้อสร้างได้เฉพาะรายการขายแบบผ่อนกับร้านเท่านั้น (การขายเงินสด/ผ่านไฟแนนซ์ไม่ต้องทำสัญญา)"
+      ),
+      { statusCode: 400 }
+    );
+  }
 
   // Auto-sum totalPrincipal from linked sales' financeAmount when not explicitly provided
   const resolvedPrincipal =
@@ -90,14 +101,9 @@ export async function createContract(input: CreateContractInput, userId: string)
 
   const contractNumber = await generateContractNumber();
 
-  // For installment sales (new 2-party workflow: CSY + customer)
+  // Installment sales use the 2-party workflow: CSY + customer
   const installmentSale = linkedSales.find(
     (s) => s.paymentMethod === "installment"
-  );
-
-  // For finance_company sales (legacy 3-party workflow), kept for backward compat
-  const financeCompanySale = linkedSales.find(
-    (s) => s.paymentMethod === "finance_company" && s.financialInstitutionId
   );
 
   const contract = await prisma.contract.create({
@@ -113,9 +119,6 @@ export async function createContract(input: CreateContractInput, userId: string)
       status: "active",
       notes: input.notes ?? null,
       createdByUserId: userId,
-      ...(financeCompanySale?.financialInstitutionId && {
-        financialInstitutionId: financeCompanySale.financialInstitutionId,
-      }),
     },
   });
 
@@ -169,46 +172,6 @@ export async function createContract(input: CreateContractInput, userId: string)
     }
 
     await Promise.all(parties.map((p) => prisma.contractParty.create({ data: p })));
-  } else if (financeCompanySale) {
-    // Legacy 3-party finance_company contract: owner (financial institution) + buyer (customer) + seller (CSY)
-    const parties: Array<{
-      contractId: string;
-      role: "owner" | "buyer" | "seller";
-      partyName: string;
-      partyRefId?: string;
-      partyRefType?: string;
-    }> = [
-      // Owner: the financial institution that holds title
-      {
-        contractId: contract.id,
-        role: "owner",
-        partyName:
-          financeCompanySale.financialInstitution?.name ??
-          financeCompanySale.financeCompanyName ??
-          "Financial Institution",
-        ...(financeCompanySale.financialInstitutionId && {
-          partyRefId: financeCompanySale.financialInstitutionId,
-          partyRefType: "financial_institution",
-        }),
-      },
-      // Buyer: the customer who will repay the institution
-      {
-        contractId: contract.id,
-        role: "buyer",
-        partyName: financeCompanySale.customer.name,
-        partyRefId: financeCompanySale.customerId,
-        partyRefType: "customer",
-      },
-      // Seller: our shop (the system)
-      {
-        contractId: contract.id,
-        role: "seller",
-        partyName: "ร้านค้า (CSY)",
-        partyRefType: "system",
-      },
-    ];
-
-    await Promise.all(parties.map((p) => prisma.contractParty.create({ data: p })));
   }
 
   // Generate installment schedule on contract creation
@@ -219,7 +182,7 @@ export async function createContract(input: CreateContractInput, userId: string)
       annualRate: input.interest_rate,
       numInstallments: input.num_installments,
       startDate: new Date(input.start_date),
-      saleId: installmentSale?.id || financeCompanySale?.id || undefined,
+      saleId: installmentSale?.id,
     });
   }
 
@@ -427,16 +390,41 @@ export async function updateContract(id: string, input: UpdateContractInput) {
     throw Object.assign(new Error("Contract not found"), { statusCode: 404 });
   }
 
-  const updated = await prisma.contract.update({
-    where: { id },
-    data: {
-      ...(input.status !== undefined && { status: input.status }),
-      ...(input.notes !== undefined && { notes: input.notes }),
-    },
-    include: {
-      customer: true,
-      createdBy: { select: { id: true, name: true } },
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.contract.update({
+      where: { id },
+      data: {
+        ...(input.status !== undefined && { status: input.status }),
+        ...(input.notes !== undefined && { notes: input.notes }),
+      },
+      include: {
+        customer: true,
+        createdBy: { select: { id: true, name: true } },
+      },
+    });
+
+    // Keep linked installment sales in step with the contract:
+    // ปิดสัญญา (completed) means the sale is fully paid too.
+    // Cancelled is not propagated — the sale may be re-contracted.
+    if (input.status !== undefined && input.status !== contract.status) {
+      const saleStatusByContractStatus: Partial<Record<string, "active" | "completed" | "defaulted">> = {
+        active: "active",
+        completed: "completed",
+        defaulted: "defaulted",
+      };
+      const saleStatus = saleStatusByContractStatus[input.status];
+      if (saleStatus) {
+        await tx.sale.updateMany({
+          where: {
+            contractSales: { some: { contractId: id } },
+            paymentMethod: "installment",
+          },
+          data: { status: saleStatus },
+        });
+      }
+    }
+
+    return result;
   });
 
   return { data: updated };

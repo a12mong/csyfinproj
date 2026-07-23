@@ -26,6 +26,14 @@ const STATUS_OPTIONS = [
   { value: "cancelled", label: TH.saleStatus.cancelled },
 ];
 
+// แท็บแยกวิธีชำระ (สไตล์เดียวกับหน้า /inventory)
+const METHOD_TABS = [
+  { value: "", label: "ทั้งหมด" },
+  { value: "cash", label: TH.paymentMethod.cash },
+  { value: "installment", label: TH.paymentMethod.installment },
+  { value: "finance_company", label: TH.paymentMethod.finance_company },
+];
+
 const SALE_STATUS_STYLES: Record<string, string> = {
   active: "bg-blue-50 text-blue-700",
   completed: "bg-green-50 text-green-700",
@@ -693,7 +701,9 @@ function StepPricing({
             <span className="font-semibold">{formatPrice(financeAmount)}</span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            ตารางผ่อนชำระจะถูกกำหนดเมื่อสร้างสัญญาสำหรับรายการขายนี้
+            {form.payment_method === "installment"
+              ? "ตารางผ่อนชำระจะถูกกำหนดเมื่อสร้างสัญญาสำหรับรายการขายนี้"
+              : "ยอดที่บริษัทไฟแนนซ์ชำระให้ร้านเต็มจำนวน — ไม่ต้องสร้างสัญญาและตารางผ่อนในระบบ"}
           </p>
         </div>
       )}
@@ -1437,6 +1447,7 @@ function SalesPageInner() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
+  const [methodFilter, setMethodFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -1447,12 +1458,13 @@ function SalesPageInner() {
   }, [openNew]);
 
   const fetchSales = useCallback(
-    async (currentPage: number, status: string) => {
+    async (currentPage: number, status: string, method: string) => {
       setLoading(true);
       setError(null);
       try {
         const params = new URLSearchParams({ page: String(currentPage) });
         if (status) params.set("status", status);
+        if (method) params.set("payment_method", method);
         const res = await apiFetch<PaginatedResponse<Sale>>(`/sales?${params}`);
         setSales(res.data);
         setTotal(res.total);
@@ -1466,11 +1478,16 @@ function SalesPageInner() {
   );
 
   useEffect(() => {
-    fetchSales(page, statusFilter);
-  }, [page, statusFilter, fetchSales]);
+    fetchSales(page, statusFilter, methodFilter);
+  }, [page, statusFilter, methodFilter, fetchSales]);
 
   function handleStatusFilter(value: string) {
     setStatusFilter(value);
+    setPage(1);
+  }
+
+  function handleMethodFilter(value: string) {
+    setMethodFilter(value);
     setPage(1);
   }
 
@@ -1481,7 +1498,7 @@ function SalesPageInner() {
 
   function handleCancelModal() {
     setShowNewModal(false);
-    fetchSales(page, statusFilter);
+    fetchSales(page, statusFilter, methodFilter);
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -1505,19 +1522,38 @@ function SalesPageInner() {
           </button>
         </div>
 
-        {/* Filter */}
-        <div className="mb-6">
-          <select
-            value={statusFilter}
-            onChange={(e) => handleStatusFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+        {/* Payment method tabs (สไตล์เดียวกับหน้า /inventory) */}
+        <div className="flex border-b border-gray-200 mb-6">
+          {METHOD_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => handleMethodFilter(tab.value)}
+              className={`px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
+                methodFilter === tab.value
+                  ? "border-primary-600 text-primary-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Status Sub-tabs (Pills — สไตล์เดียวกับหน้า /inventory) */}
+        <div className="flex bg-gray-100 p-1 rounded-lg self-start w-fit mb-6">
+          {[...STATUS_OPTIONS.filter((o) => o.value !== ""), { value: "", label: "ทั้งหมด" }].map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => handleStatusFilter(opt.value)}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                statusFilter === opt.value
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-900"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
 
         {error && (
