@@ -1,10 +1,13 @@
 name: Build & Deploy
 
 # Branch → environment mapping:
-#   develop → GitHub Environment "dev"        (dev droplet)
-#   main    → GitHub Environment "production" (live droplet)
+#   develop → GitHub Environment "dev"        → /opt/csyfinproj-dev
+#   main    → GitHub Environment "production" → /opt/csyfinproj
 # Each Environment carries its own secrets (DEPLOY_HOST/DEPLOY_USER/
 # DEPLOY_SSH_KEY/GHCR_PAT) and variables (NEXT_PUBLIC_API_URL/NEXT_PUBLIC_LIFF_ID).
+# dev and live may point at the SAME droplet (same DEPLOY_HOST) — instances are
+# isolated by deploy dir + compose project name; one shared Caddy serves both.
+# Set the optional environment variable DEPLOY_DIR to override the directory.
 on:
   push:
     branches: [main, develop]
@@ -72,6 +75,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: ${{ github.ref_name == 'main' && 'production' || 'dev' }}
+    env:
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || (github.ref_name == 'main' && '/opt/csyfinproj' || '/opt/csyfinproj-dev') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -85,7 +90,7 @@ jobs:
           # GitHub runner → droplet dials can be flaky; default 30s is too tight
           timeout: 120s
           source: "deploy/docker-compose.yml,deploy/Caddyfile"
-          target: /opt/csyfinproj
+          target: ${{ env.DEPLOY_DIR }}
           strip_components: 1
           overwrite: true
 
@@ -100,7 +105,7 @@ jobs:
           command_timeout: 15m
           script: |
             set -euo pipefail
-            cd /opt/csyfinproj
+            cd "${{ env.DEPLOY_DIR }}"
 
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io \
               -u "${{ github.repository_owner }}" --password-stdin
@@ -119,4 +124,12 @@ jobs:
             docker compose run --rm api npx prisma db push --skip-generate
 
             docker compose up -d --remove-orphans --wait
+
+            # This instance runs the shared Caddy (COMPOSE_PROFILES=edge in
+            # its .env) → apply any Caddyfile changes without downtime.
+            # No-op for instances that don't run Caddy.
+            if [ -n "$(docker compose ps -q caddy 2>/dev/null)" ]; then
+              docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+            fi
+
             docker image prune -f

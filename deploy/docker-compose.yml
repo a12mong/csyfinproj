@@ -1,7 +1,13 @@
-# Production stack for the DigitalOcean droplet.
-# Lives at /opt/csyfinproj on the server together with Caddyfile and .env
-# (CI copies this file + Caddyfile on every deploy).
-name: csyfinproj
+# Stack for a DigitalOcean droplet. One copy of this file per instance:
+#   live: /opt/csyfinproj      (.env sets COMPOSE_PROJECT_NAME=csyfinproj,
+#                               EDGE_ALIAS=live, COMPOSE_PROFILES=edge)
+#   dev:  /opt/csyfinproj-dev  (.env sets COMPOSE_PROJECT_NAME=csyfinproj-dev,
+#                               EDGE_ALIAS=dev, DB_HOST_PORT=3307, no profiles)
+# Both instances can share one droplet: only the instance with
+# COMPOSE_PROFILES=edge runs Caddy (ports 80/443), which reaches every
+# instance's api/web over the shared external "edge" network
+# (create once: docker network create edge).
+name: ${COMPOSE_PROJECT_NAME:-csyfinproj}
 
 services:
   db:
@@ -17,8 +23,9 @@ services:
       - --collation-server=utf8mb4_unicode_ci
     # Bound to localhost only — reachable from the droplet itself / SSH tunnel,
     # never from the internet. Used for seeding and manual inspection.
+    # DB_HOST_PORT must differ per instance on a shared droplet (live 3306, dev 3307).
     ports:
-      - "127.0.0.1:3306:3306"
+      - "127.0.0.1:${DB_HOST_PORT:-3306}:3306"
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
@@ -55,28 +62,54 @@ services:
     volumes:
       - uploads:/app/uploads
       - secure_uploads:/app/secure-uploads
+    networks:
+      default:
+      edge:
+        aliases:
+          - ${EDGE_ALIAS:-live}-api
 
   web:
     image: ghcr.io/${GHCR_OWNER}/csyfinproj-web:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       - api
+    networks:
+      default:
+      edge:
+        aliases:
+          - ${EDGE_ALIAS:-live}-web
 
+  # Runs only when COMPOSE_PROFILES=edge (the live instance). One Caddy per
+  # droplet owns 80/443 and serves every instance via the edge network.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    profiles: ["edge"]
     ports:
       - "80:80"
       - "443:443"
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      # dev.localhost = inert placeholder so the Caddyfile's dev block stays
+      # valid when no dev instance shares this droplet
+      DEV_SITE_ADDRESS: ${DEV_SITE_ADDRESS:-dev.localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - default
+      - edge
     depends_on:
       - web
       - api
+
+networks:
+  default:
+  # Shared across compose projects on the droplet; create once with:
+  #   docker network create edge
+  edge:
+    external: true
 
 volumes:
   db_data:
