@@ -1,10 +1,30 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import ProtectedRoute from "./ProtectedRoute";
 import { useAuth, PermissionPage } from "@/contexts/AuthContext";
+
+// Cache the runtime env for the lifetime of the page load — it never changes
+let cachedEnv: string | null = null;
+
+function useRuntimeEnv(): string | null {
+  const [env, setEnv] = useState<string | null>(cachedEnv);
+  useEffect(() => {
+    if (cachedEnv) return;
+    fetch("/runtime-env")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { env?: string } | null) => {
+        if (data?.env) {
+          cachedEnv = data.env;
+          setEnv(data.env);
+        }
+      })
+      .catch(() => {});
+  }, []);
+  return env;
+}
 
 interface NavItem {
   href: string;
@@ -32,6 +52,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout, hasPermission } = useAuth();
+  const runtimeEnv = useRuntimeEnv();
+  const isDevEnv = runtimeEnv === "dev";
 
   function handleLogout() {
     logout();
@@ -54,7 +76,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <span className="text-white text-sm font-bold">Y</span>
               </div>
               <div>
-                <p className="text-sm font-bold text-gray-900 leading-tight">CSYFinproj</p>
+                <p className="text-sm font-bold text-gray-900 leading-tight flex items-center gap-1.5">
+                  CSYFinproj
+                  {isDevEnv && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold tracking-wide leading-none">
+                      DEV
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-gray-400">Yamaha Sales</p>
               </div>
             </div>
