@@ -155,7 +155,9 @@ export async function createSale(input: CreateSaleInput, userId: string) {
         financialInstitutionId: input.financial_institution_id ?? null,
         soldByUserId: userId,
         notes: input.notes,
-        status: input.payment_method === "cash" ? "completed" : "active",
+        // Only in-house installment sales stay active (กำลังผ่อน);
+        // cash and finance_company sales are paid in full to the shop up front
+        status: input.payment_method === "installment" ? "active" : "completed",
       },
     });
 

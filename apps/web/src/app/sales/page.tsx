@@ -693,7 +693,9 @@ function StepPricing({
             <span className="font-semibold">{formatPrice(financeAmount)}</span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            ตารางผ่อนชำระจะถูกกำหนดเมื่อสร้างสัญญาสำหรับรายการขายนี้
+            {form.payment_method === "installment"
+              ? "ตารางผ่อนชำระจะถูกกำหนดเมื่อสร้างสัญญาสำหรับรายการขายนี้"
+              : "ยอดที่บริษัทไฟแนนซ์ชำระให้ร้านเต็มจำนวน — ไม่ต้องสร้างสัญญาและตารางผ่อนในระบบ"}
           </p>
         </div>
       )}

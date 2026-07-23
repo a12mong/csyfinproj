@@ -13,6 +13,7 @@ import {
   MotorcycleStatus,
   PaymentMethod,
   PaymentChannel,
+  CustomerType,
   SaleStatus,
   InstallmentStatus,
   NotificationChannel,
@@ -227,6 +228,22 @@ async function main() {
     dbCustomers.push(customer);
   }
 
+  // ลูกค้า type "finance" คู่กับสถาบันการเงิน — ใบกำกับของการขายผ่านไฟแนนซ์ออกในชื่อสถาบัน
+  const financeCustomerByFiId = new Map<string, string>();
+  for (const fi of dbFis) {
+    const financeCustomer = await prisma.customer.create({
+      data: {
+        name: fi.name,
+        type: CustomerType.finance,
+        phone: "—",
+        address: "—",
+        // idCardNumber เป็น unique — ใช้รหัสสถาบันแทนเลขบัตร
+        idCardNumber: `FI-${fi.code}`,
+      },
+    });
+    financeCustomerByFiId.set(fi.id, financeCustomer.id);
+  }
+
   // ── 7. Delivery notes → motorcycles ────────────────────────────────────────
   console.log("Seeding receiving + stock...");
   for (let i = 0; i < 3; i++) {
@@ -324,9 +341,20 @@ async function main() {
 
     const financeAmount = paymentMethod === PaymentMethod.cash ? 0 : round2(netPrice - downPayment);
 
+    // รายการผ่อนกับร้านตัวสุดท้าย seed เป็นเคส "ปิดสัญญา" (ผ่อนครบทุกงวดแล้ว)
+    const paidOff = paymentMethod === PaymentMethod.installment && s === 7;
+
+    // ใบกำกับของขายผ่านไฟแนนซ์ออกในชื่อสถาบันการเงิน (invoice customer)
+    const invoiceCustomerId =
+      paymentMethod === PaymentMethod.finance_company && financialInstitutionId
+        ? financeCustomerByFiId.get(financialInstitutionId)!
+        : customer.id;
+
     const sale = await prisma.sale.create({
       data: {
         customerId: customer.id,
+        invoiceCustomerId,
+        buyerCustomerId: customer.id,
         motorcycleId: mc.id,
         saleDate: faker.date.recent({ days: 90 }),
         totalPrice: salePrice,
@@ -338,7 +366,11 @@ async function main() {
         paymentMethod,
         financeCompanyName,
         financialInstitutionId: financialInstitutionId ?? null,
-        status: paymentMethod === PaymentMethod.cash ? SaleStatus.completed : SaleStatus.active,
+        // เฉพาะผ่อนกับร้าน (ที่ยังไม่ปิดสัญญา) ที่ค้างสถานะ active — เงินสด/ไฟแนนซ์ร้านได้เงินเต็มจำนวนแล้ว
+        status:
+          paymentMethod === PaymentMethod.installment && !paidOff
+            ? SaleStatus.active
+            : SaleStatus.completed,
         soldByUserId: faker.helpers.arrayElement(staffIds),
       },
     });
@@ -377,8 +409,63 @@ async function main() {
           issuedAt: sale.saleDate,
         },
       });
+    } else if (paymentMethod === PaymentMethod.finance_company) {
+      // ไฟแนนซ์: ร้านได้รับเงินเต็มจำนวนจากสถาบันการเงิน — ไม่มีสัญญา/ตารางงวดในระบบ
+      // เงินดาวน์จากลูกค้า → ใบกำกับชื่อลูกค้า, ยอดจัดไฟแนนซ์ → ใบกำกับชื่อสถาบันการเงิน
+      if (downPayment > 0) {
+        const downPaymentRecord = await prisma.payment.create({
+          data: {
+            saleId: sale.id,
+            amount: downPayment,
+            paymentDate: sale.saleDate,
+            paymentChannel: PaymentChannel.cash,
+            verified: true,
+            verifiedByUserId: admin.id,
+            notes: "Down payment from customer",
+          },
+        });
+        const dpBeforeVat = round2(downPayment / 1.07);
+        await prisma.taxInvoice.create({
+          data: {
+            invoiceNumber: `TXN-${sale.saleDate.toISOString().slice(0, 10).replace(/-/g, "")}-${faker.string.numeric(4)}`,
+            saleId: sale.id,
+            paymentId: downPaymentRecord.id,
+            customerId: customer.id,
+            type: "down_payment",
+            amount: dpBeforeVat,
+            vatAmount: round2(downPayment - dpBeforeVat),
+            totalAmount: downPayment,
+            issuedAt: sale.saleDate,
+          },
+        });
+      }
+      const payoutPayment = await prisma.payment.create({
+        data: {
+          saleId: sale.id,
+          amount: financeAmount,
+          paymentDate: sale.saleDate,
+          paymentChannel: PaymentChannel.bank_transfer,
+          verified: true,
+          verifiedByUserId: admin.id,
+          notes: `Payout from finance company: ${financeCompanyName}`,
+        },
+      });
+      const payoutBeforeVat = round2(financeAmount / 1.07);
+      await prisma.taxInvoice.create({
+        data: {
+          invoiceNumber: `TXN-${sale.saleDate.toISOString().slice(0, 10).replace(/-/g, "")}-${faker.string.numeric(4)}`,
+          saleId: sale.id,
+          paymentId: payoutPayment.id,
+          customerId: invoiceCustomerId,
+          type: "motorcycle",
+          amount: payoutBeforeVat,
+          vatAmount: round2(financeAmount - payoutBeforeVat),
+          totalAmount: financeAmount,
+          issuedAt: sale.saleDate,
+        },
+      });
     } else {
-      // ผ่อน/ไฟแนนซ์: สัญญา + คู่สัญญา + ตารางงวดแบบลดต้นลดดอก (EMI)
+      // ผ่อนกับร้าน (เช่าซื้อ): สัญญา + คู่สัญญา + ตารางงวดแบบลดต้นลดดอก (EMI)
       const P = financeAmount;
       const r = interestRate / 12 / 100;
       const factor = Math.pow(1 + r, numInstallments);
@@ -405,25 +492,23 @@ async function main() {
           numInstallments,
           interestRate,
           startDate: sale.saleDate,
-          financialInstitutionId: financialInstitutionId ?? null,
-          status: ContractStatus.active,
+          // ปิดสัญญา = ผ่อนครบ — สถานะสัญญาต้องสอดคล้องกับสถานะรายการขาย
+          status: paidOff ? ContractStatus.completed : ContractStatus.active,
           createdByUserId: sale.soldByUserId,
         },
       });
       await prisma.contractSale.create({ data: { contractId: contract.id, saleId: sale.id } });
 
-      // คู่สัญญา 2 ฝ่าย (ผ่อนกับร้าน) / 3 ฝ่าย (ไฟแนนซ์)
+      // คู่สัญญา 2 ฝ่าย: ร้าน (ผู้ขาย) + ลูกค้า (ผู้ซื้อ)
       await prisma.contractParty.createMany({
         data: [
           { contractId: contract.id, role: "buyer", partyName: customer.name, partyRefId: customer.id, partyRefType: "customer" },
           { contractId: contract.id, role: "seller", partyName: "ร้านค้า (CSY)" },
-          ...(paymentMethod === PaymentMethod.finance_company
-            ? [{ contractId: contract.id, role: "owner" as const, partyName: financeCompanyName ?? "Finance", partyRefId: financialInstitutionId, partyRefType: "financial_institution" }]
-            : []),
         ],
       });
 
-      if (paymentMethod === PaymentMethod.installment) {
+      // เคสปิดสัญญาไม่เข้าคิว demo งวดค้าง/เกินกำหนด (ข้อ 9) — งวดต้องจ่ายครบทั้งหมด
+      if (!paidOff) {
         installmentContracts.push({ contractId: contract.id, customerId: customer.id });
       }
 
@@ -437,7 +522,7 @@ async function main() {
         const amountDue = i === numInstallments ? round2(principalPart + interest) : emi;
         remaining = round2(remaining - principalPart);
 
-        const isPaid = i <= 2;
+        const isPaid = paidOff || i <= 2;
         const inst = await prisma.installment.create({
           data: {
             saleId: sale.id,
@@ -450,7 +535,10 @@ async function main() {
             remainingBalance: remaining,
             amountPaid: isPaid ? amountDue : 0,
             status: isPaid ? InstallmentStatus.paid : InstallmentStatus.pending,
-            paidAt: isPaid ? new Date(dueDate.getTime() - faker.number.int({ min: 86400000, max: 5 * 86400000 })) : null,
+            // เคสปิดสัญญาเป็นการโปะก่อนกำหนด — วันชำระงวดอนาคตต้องไม่เกินวันนี้
+            paidAt: isPaid
+              ? new Date(Math.min(dueDate.getTime(), Date.now()) - faker.number.int({ min: 86400000, max: 5 * 86400000 }))
+              : null,
           },
         });
 
