@@ -1,19 +1,33 @@
-# Reverse proxy: single origin for both web and api.
-#   SITE_ADDRESS=app.example.com  → automatic HTTPS (Let's Encrypt)
-#   SITE_ADDRESS=:80              → plain HTTP (IP-only, before DNS is ready)
-{$SITE_ADDRESS}
+# One Caddy per droplet (the instance started with COMPOSE_PROFILES=edge).
+# It serves every instance over the shared "edge" docker network, using the
+# per-instance aliases <EDGE_ALIAS>-api / <EDGE_ALIAS>-web.
+#   SITE_ADDRESS=app.example.com      → live site, automatic HTTPS
+#   DEV_SITE_ADDRESS=dev.example.com  → dev instance on the same droplet
+#                                       (leave unset if there is none)
 
-encode gzip
+(site) {
+	encode gzip
 
-# API + uploaded files → Express (:4000)
-handle /api/* {
-	reverse_proxy api:4000
+	# API + uploaded files → Express (:4000)
+	handle /api/* {
+		reverse_proxy {args[0]}-api:4000
+	}
+	handle /uploads/* {
+		reverse_proxy {args[0]}-api:4000
+	}
+
+	# Everything else → Next.js (:3000)
+	handle {
+		reverse_proxy {args[0]}-web:3000
+	}
 }
-handle /uploads/* {
-	reverse_proxy api:4000
+
+{$SITE_ADDRESS} {
+	import site live
 }
 
-# Everything else → Next.js (:3000)
-handle {
-	reverse_proxy web:3000
+# Harmless placeholder host when DEV_SITE_ADDRESS is unset (internal cert,
+# never requested); becomes the real dev site once the variable is set.
+{$DEV_SITE_ADDRESS:dev.localhost} {
+	import site dev
 }

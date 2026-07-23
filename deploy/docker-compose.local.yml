@@ -1,7 +1,9 @@
 # Overlay for building/testing the production stack on a local machine:
+#   docker network create edge   # once (shared edge network is external)
 #   cd deploy
-#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
-# (needs a .env in this folder — copy from .env.example)
+#   COMPOSE_PROFILES=edge docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+# (needs a .env in this folder — copy from .env.example; COMPOSE_PROFILES=edge
+#  enables the Caddy service so you get the full reverse-proxied stack)
 services:
   api:
     build:

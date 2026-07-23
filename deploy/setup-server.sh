@@ -30,6 +30,9 @@ ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
 
+echo "==> Creating shared docker network 'edge' (Caddy <-> app instances)..."
+docker network inspect edge >/dev/null 2>&1 || docker network create edge
+
 echo "==> Creating app directory /opt/csyfinproj ..."
 mkdir -p /opt/csyfinproj
 
